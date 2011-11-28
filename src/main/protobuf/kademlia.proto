@@ -1,0 +1,30 @@
+package org.ogreg.sdis.messages;
+
+message Node {
+	required bytes nodeId = 1;
+	required bytes address = 2;
+	required uint32 port = 3;
+}
+
+enum Request {
+	PING = 0;
+	STORE = 1;
+	FIND_NODE = 2;
+	FIND_VALUE = 3;
+}
+
+enum Response {
+	SUCCESS = 0;
+	IO_ERROR = 1;
+}
+
+message Message {
+	required bytes nodeId = 1;
+	required bytes rpcId = 2;
+	optional Request requestType = 3;
+	optional Response responseType = 4;
+	
+	optional bytes key = 10;
+	optional bytes data = 11;
+	repeated Node nodes = 12;
+}
