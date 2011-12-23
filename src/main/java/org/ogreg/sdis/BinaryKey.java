@@ -13,8 +13,8 @@ public final class BinaryKey {
 	private final byte[] bytes;
 
 	public BinaryKey(byte[] bytes) {
-		if (bytes.length != 160) {
-			throw new IllegalArgumentException("Keys should be 160 bits long (" + bytes.length + " != 160)");
+		if (bytes.length != 20) {
+			throw new IllegalArgumentException("Keys should be 20 bytes long (" + bytes.length + " != 20)");
 		}
 		this.bytes = bytes;
 	}

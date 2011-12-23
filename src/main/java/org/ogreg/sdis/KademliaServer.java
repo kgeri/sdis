@@ -19,8 +19,8 @@ import org.jboss.netty.handler.codec.protobuf.ProtobufVarint32LengthFieldPrepend
 import org.ogreg.sdis.messages.Kademlia;
 import org.ogreg.sdis.messages.Kademlia.Message;
 import org.ogreg.sdis.messages.Kademlia.Message.Builder;
+import static org.ogreg.sdis.messages.Kademlia.MessageType.*;
 import org.ogreg.sdis.messages.Kademlia.Node;
-import org.ogreg.sdis.messages.Kademlia.Response;
 import org.ogreg.sdis.storage.StorageService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -60,17 +60,58 @@ public class KademliaServer {
 		this.port = port;
 	}
 
-	// TODO util class?
-	private static BinaryKey getKey(Message msg) {
+	private void processPing(Message req, Builder builder) {
+		builder.setType(RSP_SUCCESS);
+	}
+
+	private void processStore(Message req, Builder builder) {
+		BinaryKey key = getKey(req);
+		ByteString data = getData(req);
+		// TODO check key
+		// TODO check data
+		store.store(key, data.asReadOnlyByteBuffer());
+	}
+
+	private void processFindNode(Message req, Builder builder) {
+		BinaryKey key = getKey(req);
+		// TODO get closest nodes
+		builder.addNodes((Node) null);
+	}
+
+	private void processFindValue(Message req, Builder builder) {
+		BinaryKey key = getKey(req);
+		ByteBuffer dataBuffer = store.load(key);
+		if (dataBuffer != null) {
+			builder.setData(ByteString.copyFrom(dataBuffer));
+		} else {
+			// TODO get closest nodes
+			builder.addNodes((Node) null);
+		}
+	}
+
+	private void processSuccess(Message req, Builder builder) {
+		// TODO process success result based on rpc id
+	}
+
+	private void processIOError(Message req, Builder builder) {
+		// TODO process IO error result based on rpc id
+	}
+
+	private void unsupportedMessage(MessageEvent event, Message request) {
+		log.error("Unsupported message from: {} ({})", event.getRemoteAddress(), request);
+	}
+
+	private BinaryKey getKey(Message msg) {
 		// TODO assert has key
 		return new BinaryKey(msg.getKey().toByteArray());
 	}
 
-	private static ByteString getData(Message msg) {
+	private ByteString getData(Message msg) {
 		// TODO assert has data
 		return msg.getData();
 	}
 
+	// A pipeline factory for handling Kademlia protobuf messages
 	private class KademliaPipelineFactory implements ChannelPipelineFactory {
 
 		@Override
@@ -85,6 +126,7 @@ public class KademliaServer {
 		}
 	}
 
+	// The handler for protobuf Kademlia messages
 	private class KademliaHandler extends SimpleChannelUpstreamHandler {
 
 		@Override
@@ -92,68 +134,36 @@ public class KademliaServer {
 			Message req = (Message) e.getMessage();
 
 			ByteString nodeId = null;
-			ByteString rpcId = null;
+			ByteString rpcId = KademliaUtil.generateId();
 
 			Builder builder = Message.newBuilder().setNodeId(nodeId).setRpcId(rpcId);
 
-			if (req.hasRequestType()) {
-				BinaryKey key;
-
-				// Processing requests
-				switch (req.getRequestType()) {
-				case PING:
-					builder.setResponseType(Response.SUCCESS);
-					break;
-				case STORE:
-					key = getKey(req);
-					ByteString data = getData(req);
-					// TODO check key
-					// TODO check data
-					store.store(key, data.asReadOnlyByteBuffer());
-					break;
-				case FIND_NODE:
-					key = getKey(req);
-					// TODO get closest nodes
-					builder.addNodes((Node) null);
-					break;
-				case FIND_VALUE:
-					key = getKey(req);
-					ByteBuffer dataBuffer = store.load(key);
-					if (dataBuffer != null) {
-						builder.setData(ByteString.copyFrom(dataBuffer));
-					} else {
-						// TODO get closest nodes
-						builder.addNodes((Node) null);
-					}
-					break;
-				default:
-					unsupportedMessage(e, req);
-					return;
-				}
-			} else if (req.hasResponseType()) {
-
-				// Processing responses
-				switch (req.getResponseType()) {
-				case SUCCESS:
-					// TODO process success result based on rpc id
-					break;
-				case IO_ERROR:
-					// TODO process error result based on rpc id
-					break;
-				default:
-					unsupportedMessage(e, req);
-					return;
-				}
-			} else {
+			// Processing messages
+			switch (req.getType()) {
+			case REQ_PING:
+				processPing(req, builder);
+				break;
+			case REQ_STORE:
+				processStore(req, builder);
+				break;
+			case REQ_FIND_NODE:
+				processFindNode(req, builder);
+				break;
+			case REQ_FIND_VALUE:
+				processFindValue(req, builder);
+				break;
+			case RSP_SUCCESS:
+				processSuccess(req, builder);
+				break;
+			case RSP_IO_ERROR:
+				processIOError(req, builder);
+				break;
+			default:
 				unsupportedMessage(e, req);
 				return;
 			}
 
 			ctx.getChannel().write(builder.build());
-		}
-
-		private void unsupportedMessage(MessageEvent event, Message request) {
-			log.error("Unsupported message from: {} ({})", event.getRemoteAddress(), request);
 		}
 	}
 }

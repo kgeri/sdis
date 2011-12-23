@@ -8,41 +8,47 @@ public final class Kademlia {
   public static void registerAllExtensions(
       com.google.protobuf.ExtensionRegistry registry) {
   }
-  public enum Request
+  public enum MessageType
       implements com.google.protobuf.ProtocolMessageEnum {
-    PING(0, 0),
-    STORE(1, 1),
-    FIND_NODE(2, 2),
-    FIND_VALUE(3, 3),
+    REQ_PING(0, 0),
+    REQ_STORE(1, 1),
+    REQ_FIND_NODE(2, 2),
+    REQ_FIND_VALUE(3, 3),
+    RSP_SUCCESS(4, 10),
+    RSP_IO_ERROR(5, 11),
     ;
     
-    public static final int PING_VALUE = 0;
-    public static final int STORE_VALUE = 1;
-    public static final int FIND_NODE_VALUE = 2;
-    public static final int FIND_VALUE_VALUE = 3;
+    public static final int REQ_PING_VALUE = 0;
+    public static final int REQ_STORE_VALUE = 1;
+    public static final int REQ_FIND_NODE_VALUE = 2;
+    public static final int REQ_FIND_VALUE_VALUE = 3;
+    public static final int RSP_SUCCESS_VALUE = 10;
+    public static final int RSP_IO_ERROR_VALUE = 11;
     
     
     public final int getNumber() { return value; }
     
-    public static Request valueOf(int value) {
+    public static MessageType valueOf(int value) {
       switch (value) {
-        case 0: return PING;
-        case 1: return STORE;
-        case 2: return FIND_NODE;
-        case 3: return FIND_VALUE;
+        case 0: return REQ_PING;
+        case 1: return REQ_STORE;
+        case 2: return REQ_FIND_NODE;
+        case 3: return REQ_FIND_VALUE;
+        case 10: return RSP_SUCCESS;
+        case 11: return RSP_IO_ERROR;
         default: return null;
       }
     }
     
-    public static com.google.protobuf.Internal.EnumLiteMap<Request>
+    public static com.google.protobuf.Internal.EnumLiteMap<MessageType>
         internalGetValueMap() {
       return internalValueMap;
     }
-    private static com.google.protobuf.Internal.EnumLiteMap<Request>
+    private static com.google.protobuf.Internal.EnumLiteMap<MessageType>
         internalValueMap =
-          new com.google.protobuf.Internal.EnumLiteMap<Request>() {
-            public Request findValueByNumber(int number) {
-              return Request.valueOf(number);
+          new com.google.protobuf.Internal.EnumLiteMap<MessageType>() {
+            public MessageType findValueByNumber(int number) {
+              return MessageType.valueOf(number);
             }
           };
     
@@ -59,11 +65,11 @@ public final class Kademlia {
       return org.ogreg.sdis.messages.Kademlia.getDescriptor().getEnumTypes().get(0);
     }
     
-    private static final Request[] VALUES = {
-      PING, STORE, FIND_NODE, FIND_VALUE, 
+    private static final MessageType[] VALUES = {
+      REQ_PING, REQ_STORE, REQ_FIND_NODE, REQ_FIND_VALUE, RSP_SUCCESS, RSP_IO_ERROR, 
     };
     
-    public static Request valueOf(
+    public static MessageType valueOf(
         com.google.protobuf.Descriptors.EnumValueDescriptor desc) {
       if (desc.getType() != getDescriptor()) {
         throw new java.lang.IllegalArgumentException(
@@ -75,81 +81,12 @@ public final class Kademlia {
     private final int index;
     private final int value;
     
-    private Request(int index, int value) {
+    private MessageType(int index, int value) {
       this.index = index;
       this.value = value;
     }
     
-    // @@protoc_insertion_point(enum_scope:org.ogreg.sdis.messages.Request)
-  }
-  
-  public enum Response
-      implements com.google.protobuf.ProtocolMessageEnum {
-    SUCCESS(0, 0),
-    IO_ERROR(1, 1),
-    ;
-    
-    public static final int SUCCESS_VALUE = 0;
-    public static final int IO_ERROR_VALUE = 1;
-    
-    
-    public final int getNumber() { return value; }
-    
-    public static Response valueOf(int value) {
-      switch (value) {
-        case 0: return SUCCESS;
-        case 1: return IO_ERROR;
-        default: return null;
-      }
-    }
-    
-    public static com.google.protobuf.Internal.EnumLiteMap<Response>
-        internalGetValueMap() {
-      return internalValueMap;
-    }
-    private static com.google.protobuf.Internal.EnumLiteMap<Response>
-        internalValueMap =
-          new com.google.protobuf.Internal.EnumLiteMap<Response>() {
-            public Response findValueByNumber(int number) {
-              return Response.valueOf(number);
-            }
-          };
-    
-    public final com.google.protobuf.Descriptors.EnumValueDescriptor
-        getValueDescriptor() {
-      return getDescriptor().getValues().get(index);
-    }
-    public final com.google.protobuf.Descriptors.EnumDescriptor
-        getDescriptorForType() {
-      return getDescriptor();
-    }
-    public static final com.google.protobuf.Descriptors.EnumDescriptor
-        getDescriptor() {
-      return org.ogreg.sdis.messages.Kademlia.getDescriptor().getEnumTypes().get(1);
-    }
-    
-    private static final Response[] VALUES = {
-      SUCCESS, IO_ERROR, 
-    };
-    
-    public static Response valueOf(
-        com.google.protobuf.Descriptors.EnumValueDescriptor desc) {
-      if (desc.getType() != getDescriptor()) {
-        throw new java.lang.IllegalArgumentException(
-          "EnumValueDescriptor is not for this type.");
-      }
-      return VALUES[desc.getIndex()];
-    }
-    
-    private final int index;
-    private final int value;
-    
-    private Response(int index, int value) {
-      this.index = index;
-      this.value = value;
-    }
-    
-    // @@protoc_insertion_point(enum_scope:org.ogreg.sdis.messages.Response)
+    // @@protoc_insertion_point(enum_scope:org.ogreg.sdis.messages.MessageType)
   }
   
   public interface NodeOrBuilder
@@ -645,23 +582,19 @@ public final class Kademlia {
     boolean hasRpcId();
     com.google.protobuf.ByteString getRpcId();
     
-    // optional .org.ogreg.sdis.messages.Request requestType = 3;
-    boolean hasRequestType();
-    org.ogreg.sdis.messages.Kademlia.Request getRequestType();
+    // required .org.ogreg.sdis.messages.MessageType type = 3;
+    boolean hasType();
+    org.ogreg.sdis.messages.Kademlia.MessageType getType();
     
-    // optional .org.ogreg.sdis.messages.Response responseType = 4;
-    boolean hasResponseType();
-    org.ogreg.sdis.messages.Kademlia.Response getResponseType();
-    
-    // optional bytes key = 10;
+    // optional bytes key = 4;
     boolean hasKey();
     com.google.protobuf.ByteString getKey();
     
-    // optional bytes data = 11;
+    // optional bytes data = 5;
     boolean hasData();
     com.google.protobuf.ByteString getData();
     
-    // repeated .org.ogreg.sdis.messages.Node nodes = 12;
+    // repeated .org.ogreg.sdis.messages.Node nodes = 6;
     java.util.List<org.ogreg.sdis.messages.Kademlia.Node> 
         getNodesList();
     org.ogreg.sdis.messages.Kademlia.Node getNodes(int index);
@@ -720,48 +653,38 @@ public final class Kademlia {
       return rpcId_;
     }
     
-    // optional .org.ogreg.sdis.messages.Request requestType = 3;
-    public static final int REQUESTTYPE_FIELD_NUMBER = 3;
-    private org.ogreg.sdis.messages.Kademlia.Request requestType_;
-    public boolean hasRequestType() {
+    // required .org.ogreg.sdis.messages.MessageType type = 3;
+    public static final int TYPE_FIELD_NUMBER = 3;
+    private org.ogreg.sdis.messages.Kademlia.MessageType type_;
+    public boolean hasType() {
       return ((bitField0_ & 0x00000004) == 0x00000004);
     }
-    public org.ogreg.sdis.messages.Kademlia.Request getRequestType() {
-      return requestType_;
+    public org.ogreg.sdis.messages.Kademlia.MessageType getType() {
+      return type_;
     }
     
-    // optional .org.ogreg.sdis.messages.Response responseType = 4;
-    public static final int RESPONSETYPE_FIELD_NUMBER = 4;
-    private org.ogreg.sdis.messages.Kademlia.Response responseType_;
-    public boolean hasResponseType() {
-      return ((bitField0_ & 0x00000008) == 0x00000008);
-    }
-    public org.ogreg.sdis.messages.Kademlia.Response getResponseType() {
-      return responseType_;
-    }
-    
-    // optional bytes key = 10;
-    public static final int KEY_FIELD_NUMBER = 10;
+    // optional bytes key = 4;
+    public static final int KEY_FIELD_NUMBER = 4;
     private com.google.protobuf.ByteString key_;
     public boolean hasKey() {
-      return ((bitField0_ & 0x00000010) == 0x00000010);
+      return ((bitField0_ & 0x00000008) == 0x00000008);
     }
     public com.google.protobuf.ByteString getKey() {
       return key_;
     }
     
-    // optional bytes data = 11;
-    public static final int DATA_FIELD_NUMBER = 11;
+    // optional bytes data = 5;
+    public static final int DATA_FIELD_NUMBER = 5;
     private com.google.protobuf.ByteString data_;
     public boolean hasData() {
-      return ((bitField0_ & 0x00000020) == 0x00000020);
+      return ((bitField0_ & 0x00000010) == 0x00000010);
     }
     public com.google.protobuf.ByteString getData() {
       return data_;
     }
     
-    // repeated .org.ogreg.sdis.messages.Node nodes = 12;
-    public static final int NODES_FIELD_NUMBER = 12;
+    // repeated .org.ogreg.sdis.messages.Node nodes = 6;
+    public static final int NODES_FIELD_NUMBER = 6;
     private java.util.List<org.ogreg.sdis.messages.Kademlia.Node> nodes_;
     public java.util.List<org.ogreg.sdis.messages.Kademlia.Node> getNodesList() {
       return nodes_;
@@ -784,8 +707,7 @@ public final class Kademlia {
     private void initFields() {
       nodeId_ = com.google.protobuf.ByteString.EMPTY;
       rpcId_ = com.google.protobuf.ByteString.EMPTY;
-      requestType_ = org.ogreg.sdis.messages.Kademlia.Request.PING;
-      responseType_ = org.ogreg.sdis.messages.Kademlia.Response.SUCCESS;
+      type_ = org.ogreg.sdis.messages.Kademlia.MessageType.REQ_PING;
       key_ = com.google.protobuf.ByteString.EMPTY;
       data_ = com.google.protobuf.ByteString.EMPTY;
       nodes_ = java.util.Collections.emptyList();
@@ -800,6 +722,10 @@ public final class Kademlia {
         return false;
       }
       if (!hasRpcId()) {
+        memoizedIsInitialized = 0;
+        return false;
+      }
+      if (!hasType()) {
         memoizedIsInitialized = 0;
         return false;
       }
@@ -823,19 +749,16 @@ public final class Kademlia {
         output.writeBytes(2, rpcId_);
       }
       if (((bitField0_ & 0x00000004) == 0x00000004)) {
-        output.writeEnum(3, requestType_.getNumber());
+        output.writeEnum(3, type_.getNumber());
       }
       if (((bitField0_ & 0x00000008) == 0x00000008)) {
-        output.writeEnum(4, responseType_.getNumber());
+        output.writeBytes(4, key_);
       }
       if (((bitField0_ & 0x00000010) == 0x00000010)) {
-        output.writeBytes(10, key_);
-      }
-      if (((bitField0_ & 0x00000020) == 0x00000020)) {
-        output.writeBytes(11, data_);
+        output.writeBytes(5, data_);
       }
       for (int i = 0; i < nodes_.size(); i++) {
-        output.writeMessage(12, nodes_.get(i));
+        output.writeMessage(6, nodes_.get(i));
       }
       getUnknownFields().writeTo(output);
     }
@@ -856,23 +779,19 @@ public final class Kademlia {
       }
       if (((bitField0_ & 0x00000004) == 0x00000004)) {
         size += com.google.protobuf.CodedOutputStream
-          .computeEnumSize(3, requestType_.getNumber());
+          .computeEnumSize(3, type_.getNumber());
       }
       if (((bitField0_ & 0x00000008) == 0x00000008)) {
         size += com.google.protobuf.CodedOutputStream
-          .computeEnumSize(4, responseType_.getNumber());
+          .computeBytesSize(4, key_);
       }
       if (((bitField0_ & 0x00000010) == 0x00000010)) {
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(10, key_);
-      }
-      if (((bitField0_ & 0x00000020) == 0x00000020)) {
-        size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(11, data_);
+          .computeBytesSize(5, data_);
       }
       for (int i = 0; i < nodes_.size(); i++) {
         size += com.google.protobuf.CodedOutputStream
-          .computeMessageSize(12, nodes_.get(i));
+          .computeMessageSize(6, nodes_.get(i));
       }
       size += getUnknownFields().getSerializedSize();
       memoizedSerializedSize = size;
@@ -1003,17 +922,15 @@ public final class Kademlia {
         bitField0_ = (bitField0_ & ~0x00000001);
         rpcId_ = com.google.protobuf.ByteString.EMPTY;
         bitField0_ = (bitField0_ & ~0x00000002);
-        requestType_ = org.ogreg.sdis.messages.Kademlia.Request.PING;
+        type_ = org.ogreg.sdis.messages.Kademlia.MessageType.REQ_PING;
         bitField0_ = (bitField0_ & ~0x00000004);
-        responseType_ = org.ogreg.sdis.messages.Kademlia.Response.SUCCESS;
-        bitField0_ = (bitField0_ & ~0x00000008);
         key_ = com.google.protobuf.ByteString.EMPTY;
-        bitField0_ = (bitField0_ & ~0x00000010);
+        bitField0_ = (bitField0_ & ~0x00000008);
         data_ = com.google.protobuf.ByteString.EMPTY;
-        bitField0_ = (bitField0_ & ~0x00000020);
+        bitField0_ = (bitField0_ & ~0x00000010);
         if (nodesBuilder_ == null) {
           nodes_ = java.util.Collections.emptyList();
-          bitField0_ = (bitField0_ & ~0x00000040);
+          bitField0_ = (bitField0_ & ~0x00000020);
         } else {
           nodesBuilder_.clear();
         }
@@ -1066,23 +983,19 @@ public final class Kademlia {
         if (((from_bitField0_ & 0x00000004) == 0x00000004)) {
           to_bitField0_ |= 0x00000004;
         }
-        result.requestType_ = requestType_;
+        result.type_ = type_;
         if (((from_bitField0_ & 0x00000008) == 0x00000008)) {
           to_bitField0_ |= 0x00000008;
         }
-        result.responseType_ = responseType_;
+        result.key_ = key_;
         if (((from_bitField0_ & 0x00000010) == 0x00000010)) {
           to_bitField0_ |= 0x00000010;
         }
-        result.key_ = key_;
-        if (((from_bitField0_ & 0x00000020) == 0x00000020)) {
-          to_bitField0_ |= 0x00000020;
-        }
         result.data_ = data_;
         if (nodesBuilder_ == null) {
-          if (((bitField0_ & 0x00000040) == 0x00000040)) {
+          if (((bitField0_ & 0x00000020) == 0x00000020)) {
             nodes_ = java.util.Collections.unmodifiableList(nodes_);
-            bitField0_ = (bitField0_ & ~0x00000040);
+            bitField0_ = (bitField0_ & ~0x00000020);
           }
           result.nodes_ = nodes_;
         } else {
@@ -1110,11 +1023,8 @@ public final class Kademlia {
         if (other.hasRpcId()) {
           setRpcId(other.getRpcId());
         }
-        if (other.hasRequestType()) {
-          setRequestType(other.getRequestType());
-        }
-        if (other.hasResponseType()) {
-          setResponseType(other.getResponseType());
+        if (other.hasType()) {
+          setType(other.getType());
         }
         if (other.hasKey()) {
           setKey(other.getKey());
@@ -1126,7 +1036,7 @@ public final class Kademlia {
           if (!other.nodes_.isEmpty()) {
             if (nodes_.isEmpty()) {
               nodes_ = other.nodes_;
-              bitField0_ = (bitField0_ & ~0x00000040);
+              bitField0_ = (bitField0_ & ~0x00000020);
             } else {
               ensureNodesIsMutable();
               nodes_.addAll(other.nodes_);
@@ -1139,7 +1049,7 @@ public final class Kademlia {
               nodesBuilder_.dispose();
               nodesBuilder_ = null;
               nodes_ = other.nodes_;
-              bitField0_ = (bitField0_ & ~0x00000040);
+              bitField0_ = (bitField0_ & ~0x00000020);
               nodesBuilder_ = 
                 com.google.protobuf.GeneratedMessage.alwaysUseFieldBuilders ?
                    getNodesFieldBuilder() : null;
@@ -1158,6 +1068,10 @@ public final class Kademlia {
           return false;
         }
         if (!hasRpcId()) {
+          
+          return false;
+        }
+        if (!hasType()) {
           
           return false;
         }
@@ -1205,37 +1119,26 @@ public final class Kademlia {
             }
             case 24: {
               int rawValue = input.readEnum();
-              org.ogreg.sdis.messages.Kademlia.Request value = org.ogreg.sdis.messages.Kademlia.Request.valueOf(rawValue);
+              org.ogreg.sdis.messages.Kademlia.MessageType value = org.ogreg.sdis.messages.Kademlia.MessageType.valueOf(rawValue);
               if (value == null) {
                 unknownFields.mergeVarintField(3, rawValue);
               } else {
                 bitField0_ |= 0x00000004;
-                requestType_ = value;
+                type_ = value;
               }
               break;
             }
-            case 32: {
-              int rawValue = input.readEnum();
-              org.ogreg.sdis.messages.Kademlia.Response value = org.ogreg.sdis.messages.Kademlia.Response.valueOf(rawValue);
-              if (value == null) {
-                unknownFields.mergeVarintField(4, rawValue);
-              } else {
-                bitField0_ |= 0x00000008;
-                responseType_ = value;
-              }
-              break;
-            }
-            case 82: {
-              bitField0_ |= 0x00000010;
+            case 34: {
+              bitField0_ |= 0x00000008;
               key_ = input.readBytes();
               break;
             }
-            case 90: {
-              bitField0_ |= 0x00000020;
+            case 42: {
+              bitField0_ |= 0x00000010;
               data_ = input.readBytes();
               break;
             }
-            case 98: {
+            case 50: {
               org.ogreg.sdis.messages.Kademlia.Node.Builder subBuilder = org.ogreg.sdis.messages.Kademlia.Node.newBuilder();
               input.readMessage(subBuilder, extensionRegistry);
               addNodes(subBuilder.buildPartial());
@@ -1295,58 +1198,34 @@ public final class Kademlia {
         return this;
       }
       
-      // optional .org.ogreg.sdis.messages.Request requestType = 3;
-      private org.ogreg.sdis.messages.Kademlia.Request requestType_ = org.ogreg.sdis.messages.Kademlia.Request.PING;
-      public boolean hasRequestType() {
+      // required .org.ogreg.sdis.messages.MessageType type = 3;
+      private org.ogreg.sdis.messages.Kademlia.MessageType type_ = org.ogreg.sdis.messages.Kademlia.MessageType.REQ_PING;
+      public boolean hasType() {
         return ((bitField0_ & 0x00000004) == 0x00000004);
       }
-      public org.ogreg.sdis.messages.Kademlia.Request getRequestType() {
-        return requestType_;
+      public org.ogreg.sdis.messages.Kademlia.MessageType getType() {
+        return type_;
       }
-      public Builder setRequestType(org.ogreg.sdis.messages.Kademlia.Request value) {
+      public Builder setType(org.ogreg.sdis.messages.Kademlia.MessageType value) {
         if (value == null) {
           throw new NullPointerException();
         }
         bitField0_ |= 0x00000004;
-        requestType_ = value;
+        type_ = value;
         onChanged();
         return this;
       }
-      public Builder clearRequestType() {
+      public Builder clearType() {
         bitField0_ = (bitField0_ & ~0x00000004);
-        requestType_ = org.ogreg.sdis.messages.Kademlia.Request.PING;
+        type_ = org.ogreg.sdis.messages.Kademlia.MessageType.REQ_PING;
         onChanged();
         return this;
       }
       
-      // optional .org.ogreg.sdis.messages.Response responseType = 4;
-      private org.ogreg.sdis.messages.Kademlia.Response responseType_ = org.ogreg.sdis.messages.Kademlia.Response.SUCCESS;
-      public boolean hasResponseType() {
-        return ((bitField0_ & 0x00000008) == 0x00000008);
-      }
-      public org.ogreg.sdis.messages.Kademlia.Response getResponseType() {
-        return responseType_;
-      }
-      public Builder setResponseType(org.ogreg.sdis.messages.Kademlia.Response value) {
-        if (value == null) {
-          throw new NullPointerException();
-        }
-        bitField0_ |= 0x00000008;
-        responseType_ = value;
-        onChanged();
-        return this;
-      }
-      public Builder clearResponseType() {
-        bitField0_ = (bitField0_ & ~0x00000008);
-        responseType_ = org.ogreg.sdis.messages.Kademlia.Response.SUCCESS;
-        onChanged();
-        return this;
-      }
-      
-      // optional bytes key = 10;
+      // optional bytes key = 4;
       private com.google.protobuf.ByteString key_ = com.google.protobuf.ByteString.EMPTY;
       public boolean hasKey() {
-        return ((bitField0_ & 0x00000010) == 0x00000010);
+        return ((bitField0_ & 0x00000008) == 0x00000008);
       }
       public com.google.protobuf.ByteString getKey() {
         return key_;
@@ -1355,22 +1234,22 @@ public final class Kademlia {
         if (value == null) {
     throw new NullPointerException();
   }
-  bitField0_ |= 0x00000010;
+  bitField0_ |= 0x00000008;
         key_ = value;
         onChanged();
         return this;
       }
       public Builder clearKey() {
-        bitField0_ = (bitField0_ & ~0x00000010);
+        bitField0_ = (bitField0_ & ~0x00000008);
         key_ = getDefaultInstance().getKey();
         onChanged();
         return this;
       }
       
-      // optional bytes data = 11;
+      // optional bytes data = 5;
       private com.google.protobuf.ByteString data_ = com.google.protobuf.ByteString.EMPTY;
       public boolean hasData() {
-        return ((bitField0_ & 0x00000020) == 0x00000020);
+        return ((bitField0_ & 0x00000010) == 0x00000010);
       }
       public com.google.protobuf.ByteString getData() {
         return data_;
@@ -1379,25 +1258,25 @@ public final class Kademlia {
         if (value == null) {
     throw new NullPointerException();
   }
-  bitField0_ |= 0x00000020;
+  bitField0_ |= 0x00000010;
         data_ = value;
         onChanged();
         return this;
       }
       public Builder clearData() {
-        bitField0_ = (bitField0_ & ~0x00000020);
+        bitField0_ = (bitField0_ & ~0x00000010);
         data_ = getDefaultInstance().getData();
         onChanged();
         return this;
       }
       
-      // repeated .org.ogreg.sdis.messages.Node nodes = 12;
+      // repeated .org.ogreg.sdis.messages.Node nodes = 6;
       private java.util.List<org.ogreg.sdis.messages.Kademlia.Node> nodes_ =
         java.util.Collections.emptyList();
       private void ensureNodesIsMutable() {
-        if (!((bitField0_ & 0x00000040) == 0x00000040)) {
+        if (!((bitField0_ & 0x00000020) == 0x00000020)) {
           nodes_ = new java.util.ArrayList<org.ogreg.sdis.messages.Kademlia.Node>(nodes_);
-          bitField0_ |= 0x00000040;
+          bitField0_ |= 0x00000020;
          }
       }
       
@@ -1513,7 +1392,7 @@ public final class Kademlia {
       public Builder clearNodes() {
         if (nodesBuilder_ == null) {
           nodes_ = java.util.Collections.emptyList();
-          bitField0_ = (bitField0_ & ~0x00000040);
+          bitField0_ = (bitField0_ & ~0x00000020);
           onChanged();
         } else {
           nodesBuilder_.clear();
@@ -1569,7 +1448,7 @@ public final class Kademlia {
           nodesBuilder_ = new com.google.protobuf.RepeatedFieldBuilder<
               org.ogreg.sdis.messages.Kademlia.Node, org.ogreg.sdis.messages.Kademlia.Node.Builder, org.ogreg.sdis.messages.Kademlia.NodeOrBuilder>(
                   nodes_,
-                  ((bitField0_ & 0x00000040) == 0x00000040),
+                  ((bitField0_ & 0x00000020) == 0x00000020),
                   getParentForChildren(),
                   isClean());
           nodes_ = null;
@@ -1609,16 +1488,14 @@ public final class Kademlia {
     java.lang.String[] descriptorData = {
       "\n src/main/protobuf/kademlia.proto\022\027org." +
       "ogreg.sdis.messages\"5\n\004Node\022\016\n\006nodeId\030\001 " +
-      "\002(\014\022\017\n\007address\030\002 \002(\014\022\014\n\004port\030\003 \002(\r\"\341\001\n\007M" +
-      "essage\022\016\n\006nodeId\030\001 \002(\014\022\r\n\005rpcId\030\002 \002(\014\0225\n" +
-      "\013requestType\030\003 \001(\0162 .org.ogreg.sdis.mess" +
-      "ages.Request\0227\n\014responseType\030\004 \001(\0162!.org" +
-      ".ogreg.sdis.messages.Response\022\013\n\003key\030\n \001" +
-      "(\014\022\014\n\004data\030\013 \001(\014\022,\n\005nodes\030\014 \003(\0132\035.org.og" +
-      "reg.sdis.messages.Node*=\n\007Request\022\010\n\004PIN" +
-      "G\020\000\022\t\n\005STORE\020\001\022\r\n\tFIND_NODE\020\002\022\016\n\nFIND_VA",
-      "LUE\020\003*%\n\010Response\022\013\n\007SUCCESS\020\000\022\014\n\010IO_ERR" +
-      "OR\020\001"
+      "\002(\014\022\017\n\007address\030\002 \002(\014\022\014\n\004port\030\003 \002(\r\"\245\001\n\007M" +
+      "essage\022\016\n\006nodeId\030\001 \002(\014\022\r\n\005rpcId\030\002 \002(\014\0222\n" +
+      "\004type\030\003 \002(\0162$.org.ogreg.sdis.messages.Me" +
+      "ssageType\022\013\n\003key\030\004 \001(\014\022\014\n\004data\030\005 \001(\014\022,\n\005" +
+      "nodes\030\006 \003(\0132\035.org.ogreg.sdis.messages.No" +
+      "de*t\n\013MessageType\022\014\n\010REQ_PING\020\000\022\r\n\tREQ_S" +
+      "TORE\020\001\022\021\n\rREQ_FIND_NODE\020\002\022\022\n\016REQ_FIND_VA" +
+      "LUE\020\003\022\017\n\013RSP_SUCCESS\020\n\022\020\n\014RSP_IO_ERROR\020\013"
     };
     com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner assigner =
       new com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner() {
@@ -1638,7 +1515,7 @@ public final class Kademlia {
           internal_static_org_ogreg_sdis_messages_Message_fieldAccessorTable = new
             com.google.protobuf.GeneratedMessage.FieldAccessorTable(
               internal_static_org_ogreg_sdis_messages_Message_descriptor,
-              new java.lang.String[] { "NodeId", "RpcId", "RequestType", "ResponseType", "Key", "Data", "Nodes", },
+              new java.lang.String[] { "NodeId", "RpcId", "Type", "Key", "Data", "Nodes", },
               org.ogreg.sdis.messages.Kademlia.Message.class,
               org.ogreg.sdis.messages.Kademlia.Message.Builder.class);
           return null;

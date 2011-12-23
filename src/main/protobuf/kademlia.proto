@@ -6,25 +6,22 @@ message Node {
 	required uint32 port = 3;
 }
 
-enum Request {
-	PING = 0;
-	STORE = 1;
-	FIND_NODE = 2;
-	FIND_VALUE = 3;
-}
+enum MessageType {
+	REQ_PING = 0;
+	REQ_STORE = 1;
+	REQ_FIND_NODE = 2;
+	REQ_FIND_VALUE = 3;
 
-enum Response {
-	SUCCESS = 0;
-	IO_ERROR = 1;
+	RSP_SUCCESS = 10;
+	RSP_IO_ERROR = 11;
 }
 
 message Message {
 	required bytes nodeId = 1;
 	required bytes rpcId = 2;
-	optional Request requestType = 3;
-	optional Response responseType = 4;
+	required MessageType type = 3;
 	
-	optional bytes key = 10;
-	optional bytes data = 11;
-	repeated Node nodes = 12;
+	optional bytes key = 4;
+	optional bytes data = 5;
+	repeated Node nodes = 6;
 }
