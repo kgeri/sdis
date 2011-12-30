@@ -19,6 +19,8 @@ import org.jboss.netty.handler.codec.protobuf.ProtobufVarint32LengthFieldPrepend
 import org.ogreg.sdis.messages.Kademlia;
 import org.ogreg.sdis.messages.Kademlia.Message;
 import org.ogreg.sdis.messages.Kademlia.Message.Builder;
+import org.ogreg.sdis.messages.Kademlia.MessageType;
+
 import static org.ogreg.sdis.messages.Kademlia.MessageType.*;
 import org.ogreg.sdis.messages.Kademlia.Node;
 import org.ogreg.sdis.storage.StorageService;
@@ -60,26 +62,91 @@ public class KademliaServer {
 		this.port = port;
 	}
 
+	/**
+	 * Processes a {@link MessageType#REQ_PING} message.
+	 * <p>
+	 * Required:
+	 * <ul>
+	 * </ul>
+	 * Optional:
+	 * <ul>
+	 * </ul>
+	 * Results:<br>
+	 * A {@link MessageType#RSP_SUCCESS}.
+	 * 
+	 * @param req
+	 * @param builder
+	 */
 	private void processPing(Message req, Builder builder) {
 		builder.setType(RSP_SUCCESS);
 	}
 
+	/**
+	 * Processes a {@link MessageType#REQ_STORE} message.
+	 * <p>
+	 * Required:
+	 * <ul>
+	 * <li>the binary data chunk to store
+	 * <li>the key of the data chunk
+	 * </ul>
+	 * Optional:
+	 * <ul>
+	 * </ul>
+	 * Results:<br>
+	 * A {@link MessageType#RSP_SUCCESS} a {@link MessageType#RSP_IO_ERROR}.
+	 * 
+	 * @param req
+	 * @param builder
+	 */
 	private void processStore(Message req, Builder builder) {
-		BinaryKey key = getKey(req);
-		ByteString data = getData(req);
+		BinaryKey key = KademliaUtil.ensureHasKey(req);
+		ByteString data = KademliaUtil.ensureHasKeyData(req);
 		// TODO check key
 		// TODO check data
 		store.store(key, data.asReadOnlyByteBuffer());
 	}
 
+	/**
+	 * Processes a {@link MessageType#REQ_FIND_NODE} message.
+	 * <p>
+	 * Required:
+	 * <ul>
+	 * <li>the key of the searched data chunk
+	 * </ul>
+	 * Optional:
+	 * <ul>
+	 * </ul>
+	 * Results:<br>
+	 * A {@link MessageType#RSP_SUCCESS} along with the a list of {@link Node}s which are closer to the searched key.
+	 * 
+	 * @param req
+	 * @param builder
+	 */
 	private void processFindNode(Message req, Builder builder) {
-		BinaryKey key = getKey(req);
+		BinaryKey key = KademliaUtil.ensureHasKey(req);
 		// TODO get closest nodes
 		builder.addNodes((Node) null);
 	}
 
+	/**
+	 * Processes a {@link MessageType#REQ_FIND_VALUE} message.
+	 * <p>
+	 * Required:
+	 * <ul>
+	 * <li>the key of the requested data chunk
+	 * </ul>
+	 * Optional:
+	 * <ul>
+	 * </ul>
+	 * Results:<br>
+	 * A {@link MessageType#RSP_SUCCESS} along with the requested data chunk, or a list of {@link Node}s which are
+	 * closer to the searched key.
+	 * 
+	 * @param req
+	 * @param builder
+	 */
 	private void processFindValue(Message req, Builder builder) {
-		BinaryKey key = getKey(req);
+		BinaryKey key = KademliaUtil.ensureHasKey(req);
 		ByteBuffer dataBuffer = store.load(key);
 		if (dataBuffer != null) {
 			builder.setData(ByteString.copyFrom(dataBuffer));
@@ -89,26 +156,48 @@ public class KademliaServer {
 		}
 	}
 
+	/**
+	 * Processes a {@link MessageType#RSP_SUCCESS} message.
+	 * <p>
+	 * Required:
+	 * <ul>
+	 * </ul>
+	 * Optional:
+	 * <ul>
+	 * <li>a list of {@link Node}s which are closer to the searched key, if the request was a
+	 * {@link MessageType#REQ_FIND_NODE} or a {@link MessageType#REQ_FIND_VALUE}
+	 * </ul>
+	 * Results:<br>
+	 * Internal processing, nothing is returned.
+	 * 
+	 * @param req
+	 * @param builder
+	 */
 	private void processSuccess(Message req, Builder builder) {
 		// TODO process success result based on rpc id
 	}
 
+	/**
+	 * Processes a {@link MessageType#RSP_IO_ERROR} message.
+	 * <p>
+	 * Required:
+	 * <ul>
+	 * </ul>
+	 * Optional:
+	 * <ul>
+	 * </ul>
+	 * Results:<br>
+	 * Internal processing, nothing is returned.
+	 * 
+	 * @param req
+	 * @param builder
+	 */
 	private void processIOError(Message req, Builder builder) {
 		// TODO process IO error result based on rpc id
 	}
 
 	private void unsupportedMessage(MessageEvent event, Message request) {
 		log.error("Unsupported message from: {} ({})", event.getRemoteAddress(), request);
-	}
-
-	private BinaryKey getKey(Message msg) {
-		// TODO assert has key
-		return new BinaryKey(msg.getKey().toByteArray());
-	}
-
-	private ByteString getData(Message msg) {
-		// TODO assert has data
-		return msg.getData();
 	}
 
 	// A pipeline factory for handling Kademlia protobuf messages
