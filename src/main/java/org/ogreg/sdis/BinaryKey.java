@@ -10,6 +10,7 @@ import java.util.Arrays;
  * @author gergo
  */
 public final class BinaryKey {
+
 	private final byte[] bytes;
 
 	public BinaryKey(byte[] bytes) {
@@ -39,5 +40,10 @@ public final class BinaryKey {
 		if (!Arrays.equals(bytes, other.bytes))
 			return false;
 		return true;
+	}
+
+	@Override
+	public String toString() {
+		return CommonUtil.toHexString(bytes);
 	}
 }

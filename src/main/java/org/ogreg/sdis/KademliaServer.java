@@ -100,10 +100,17 @@ public class KademliaServer {
 	 */
 	private void processStore(Message req, Builder builder) {
 		BinaryKey key = KademliaUtil.ensureHasKey(req);
-		ByteString data = KademliaUtil.ensureHasKeyData(req);
-		// TODO check key
-		// TODO check data
-		store.store(key, data.asReadOnlyByteBuffer());
+		ByteString data = KademliaUtil.ensureHasData(req);
+
+		BinaryKey computedKey = KademliaUtil.checksum(data);
+
+		if (computedKey.equals(key)) {
+			store.store(key, data.asReadOnlyByteBuffer());
+			builder.setType(RSP_SUCCESS);
+		} else {
+			log.error("Data chunk cheksum mismatch (" + key + " != " + computedKey + ")");
+			builder.setType(RSP_IO_ERROR);
+		}
 	}
 
 	/**
