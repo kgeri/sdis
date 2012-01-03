@@ -66,16 +66,6 @@ public class KademliaUtil {
 	}
 
 	/**
-	 * Checks the integrity of the <code>data</code> by calculating and comparing its checksum to <code>key</code>.
-	 * 
-	 * @param key
-	 * @param data
-	 */
-	public static void ensureCorrectData(BinaryKey key, ByteString data) {
-
-	}
-
-	/**
 	 * Generates the SHA-1 checksum from the given <code>data</code>.
 	 * 
 	 * @param data
