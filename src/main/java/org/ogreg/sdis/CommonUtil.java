@@ -82,4 +82,24 @@ public class CommonUtil {
 
 		return ret;
 	}
+
+	/**
+	 * Unpacks the <code>value</code> to a byte array.
+	 * 
+	 * @param value
+	 * @return A new byte array holding the same integers as the input array
+	 */
+	public static byte[] toByteArray(int[] value) {
+		byte[] ret = new byte[value.length * 4];
+		int v;
+		for (int i = 0; i < ret.length; i += 4) {
+			v = value[i / 4];
+			ret[i] = (byte) ((v << 24) & 0xFF);
+			ret[i] = (byte) ((v << 16) & 0xFF);
+			ret[i] = (byte) ((v << 8) & 0xFF);
+			ret[i] = (byte) (v & 0xFF);
+		}
+
+		return ret;
+	}
 }

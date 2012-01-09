@@ -1,8 +1,7 @@
-package org.ogreg.sdis.storage;
+package org.ogreg.sdis;
 
 import java.nio.ByteBuffer;
 
-import org.ogreg.sdis.BinaryKey;
 
 /**
  * Common interface for services which support block storage.

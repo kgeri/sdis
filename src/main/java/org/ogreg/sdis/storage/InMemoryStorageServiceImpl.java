@@ -5,6 +5,7 @@ import java.util.Map;
 
 import org.jboss.netty.util.internal.ConcurrentHashMap;
 import org.ogreg.sdis.BinaryKey;
+import org.ogreg.sdis.StorageService;
 
 /**
  * A simple in-memory storage service (for testing purposes only).

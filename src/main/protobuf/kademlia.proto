@@ -1,4 +1,6 @@
-package org.ogreg.sdis.messages;
+package org.ogreg.sdis.kademlia;
+
+option java_outer_classname = "Protocol";
 
 message Node {
 	required bytes nodeId = 1;

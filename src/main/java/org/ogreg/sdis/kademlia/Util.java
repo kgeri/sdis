@@ -1,10 +1,13 @@
-package org.ogreg.sdis;
+package org.ogreg.sdis.kademlia;
 
+import java.net.InetSocketAddress;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Random;
 
-import org.ogreg.sdis.messages.Kademlia.Message;
+import org.ogreg.sdis.BinaryKey;
+import org.ogreg.sdis.kademlia.Protocol.Message;
+import org.ogreg.sdis.kademlia.Protocol.Node;
 
 import com.google.protobuf.ByteString;
 
@@ -13,7 +16,7 @@ import com.google.protobuf.ByteString;
  * 
  * @author gergo
  */
-public class KademliaUtil {
+class Util {
 
 	private static final Random Rnd = new Random();
 
@@ -23,14 +26,27 @@ public class KademliaUtil {
 	private static final ThreadLocal<MessageDigest> SHA1Digests = new ThreadLocal<MessageDigest>();
 
 	/**
-	 * Generates a random 20-byte identifier used for RPC keys and Node IDs.
+	 * Generates a random identifier of {@link BinaryKey#LENGTH_BITS} bits, used for RPC keys and Node IDs.
 	 * 
 	 * @return
 	 */
-	public static ByteString generateId() {
+	public static ByteString generateByteStringId() {
 		byte[] bytes = new byte[20];
 		Rnd.nextBytes(bytes);
 		return ByteString.copyFrom(bytes);
+	}
+
+	/**
+	 * Generates a random identifier of {@link BinaryKey#LENGTH_BITS} bits, used for RPC keys and Node IDs.
+	 * 
+	 * @return
+	 */
+	public static BinaryKey generateId() {
+		int[] value = new int[BinaryKey.LENGTH_INTS];
+		for (int i = 0; i < BinaryKey.LENGTH_INTS; i++) {
+			value[i] = Rnd.nextInt();
+		}
+		return new BinaryKey(value);
 	}
 
 	/**
@@ -85,6 +101,30 @@ public class KademliaUtil {
 		return new BinaryKey(key);
 	}
 
+	/**
+	 * Converts the specified {@link Contact} to a {@link Node}.
+	 * 
+	 * @param contact
+	 * @return
+	 */
+	public static Node toNode(Contact contact) {
+		ByteString nodeId = ByteString.copyFrom(contact.nodeId.toByteArray());
+		ByteString address = ByteString.copyFrom(contact.address.getAddress().getAddress());
+		int port = contact.address.getPort();
+		return Node.newBuilder().setNodeId(nodeId).setAddress(address).setPort(port).build();
+	}
+
+	/**
+	 * Determines the {@link Contact} from the specified incoming message parameters.
+	 * 
+	 * @param nodeId
+	 * @param address
+	 * @return
+	 */
+	public static Contact toContact(ByteString nodeId, InetSocketAddress address) {
+		return new Contact(new BinaryKey(nodeId.toByteArray()), address);
+	}
+
 	private static MessageDigest createSHA1Digest() {
 		try {
 			return MessageDigest.getInstance("SHA-1");
@@ -92,4 +132,5 @@ public class KademliaUtil {
 			throw new RuntimeException(e);
 		}
 	}
+
 }

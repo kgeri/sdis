@@ -1,8 +1,11 @@
-package org.ogreg.sdis;
+package org.ogreg.sdis.kademlia;
 
 import java.net.InetSocketAddress;
+import java.util.List;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.LinkedBlockingDeque;
+
+import org.ogreg.sdis.BinaryKey;
 
 /**
  * A collection storing Kademlia {@link Contact}s in {@link Bucket}s.
@@ -10,6 +13,11 @@ import java.util.concurrent.LinkedBlockingDeque;
  * @author gergo
  */
 class Contacts {
+
+	/**
+	 * The maximum number of contacts stored in a Kademlia bucket (k).
+	 */
+	static final int MAX_CONTACTS = 20;
 
 	/**
 	 * The array of buckets storing {@link Contact}s. The size of the array is always
@@ -24,10 +32,10 @@ class Contacts {
 
 	public Contacts(BinaryKey currentNodeId) {
 		this.currentNodeId = currentNodeId;
-		this.buckets = new Bucket[BinaryKey.KADEMLIA_KEY_BITS];
+		this.buckets = new Bucket[BinaryKey.LENGTH_BITS];
 
 		for (int i = 0; i < buckets.length; i++) {
-			buckets[i] = new Bucket();
+			buckets[i] = new Bucket(MAX_CONTACTS);
 		}
 	}
 
@@ -35,11 +43,45 @@ class Contacts {
 	 * Adds or updates the specified contact.
 	 * 
 	 * @param contact
-	 * @return The first contact if the corresponding bucket is already full, or null if the new contact was added
-	 *         successfully
+	 * @return The least recently seen contact if the corresponding bucket is already full, or null if the new contact
+	 *         was added successfully
 	 */
-	public Contact add(Contact contact) {
-		int index = currentNodeId.logarithmOfDistance(contact.nodeId);
+	public Contact update(Contact contact) {
+		return getBucket(contact.nodeId).update(contact);
+	}
+
+	/**
+	 * Adds the specified contact, removing the least recently used contact if its bucket is full.
+	 * 
+	 * @param contact
+	 */
+	public void add(Contact contact) {
+		getBucket(contact.nodeId).add(contact);
+	}
+
+	/**
+	 * Removes the specified contact.
+	 * 
+	 * @param contact
+	 */
+	public void remove(Contact contact) {
+		getBucket(contact.nodeId).remove(contact);
+	}
+
+	/**
+	 * Returns {@link #MAX_CONTACTS} nodes closest to the specified key.
+	 * 
+	 * @param key
+	 * @return
+	 */
+	public List<Contact> getClosestTo(BinaryKey key) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	// Returns the closest bucket for the specified node ID
+	private Bucket getBucket(BinaryKey nodeId) {
+		int index = currentNodeId.logarithmOfDistance(nodeId);
 
 		if (index < 0) {
 			// This would mean that we are communicating with ourselves, which shouldn't be possible
@@ -47,8 +89,7 @@ class Contacts {
 					"Node distance is zero. You probably tried to add the current node to its own contact list");
 		}
 
-		Bucket bucket = buckets[index];
-		return bucket.add(contact);
+		return buckets[index];
 	}
 
 	/**
@@ -58,29 +99,39 @@ class Contacts {
 	 */
 	private static class Bucket {
 
-		private final BlockingDeque<Contact> contacts = new LinkedBlockingDeque<Contact>();
+		private final BlockingDeque<Contact> contacts;
+
+		public Bucket(int maxContacts) {
+			this.contacts = new LinkedBlockingDeque<Contact>(maxContacts);
+		}
 
 		/**
-		 * Adds the contact to this bucket.
+		 * Adds the contact to this bucket, or updates the existing contact.
 		 * 
 		 * @param contact
-		 * @return The first contact if the bucket is already full, or null if the new contact was added successfully
+		 * @return The least recently seen contact if the bucket is already full, or null if the new contact was added
+		 *         successfully
 		 */
-		public synchronized Contact add(Contact contact) {
-			if (!contacts.offerFirst(contact)) {
-				return getFirst();
+		public synchronized Contact update(Contact contact) {
+			remove(contact);
+			if (!contacts.offerLast(contact)) {
+				return contacts.getFirst();
 			} else {
 				return null;
 			}
 		}
 
 		/**
-		 * Returns the most recent contact in this bucket.
+		 * Adds the contact to this bucket, removing the least recently used contact if the bucket is full.
 		 * 
-		 * @return
+		 * @param contact
 		 */
-		public synchronized Contact getFirst() {
-			return contacts.getFirst();
+		public synchronized void add(Contact contact) {
+			remove(contact);
+			if (!contacts.offerLast(contact)) {
+				contacts.removeFirst();
+			}
+			contacts.offerLast(contact);
 		}
 
 		/**
