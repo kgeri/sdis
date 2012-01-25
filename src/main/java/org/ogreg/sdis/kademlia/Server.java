@@ -5,7 +5,7 @@ import static org.ogreg.sdis.kademlia.Protocol.MessageType.RSP_SUCCESS;
 
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
-import java.util.List;
+import java.util.Collection;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -71,9 +71,9 @@ public class Server {
 	private StorageService store;
 
 	/**
-	 * The Kademlia {@link Contact}s known to this node.
+	 * The Kademlia routing table used by this node.
 	 */
-	private Contacts contacts;
+	private RoutingTable routingTable;
 
 	/**
 	 * The current Node's node ID.
@@ -84,10 +84,12 @@ public class Server {
 
 	private ClientBootstrap client;
 
+	private ReplaceAction updateAction;
+
 	public Server(StorageService store, BinaryKey nodeId) {
 		this.store = store;
 		this.nodeId = ByteString.copyFrom(nodeId.toByteArray());
-		this.contacts = new Contacts(nodeId);
+		this.routingTable = new RoutingTableTreeImpl(nodeId);
 
 		NioServerSocketChannelFactory serverChannelFactory = new NioServerSocketChannelFactory(
 				Executors.newCachedThreadPool(), Executors.newCachedThreadPool());
@@ -119,6 +121,21 @@ public class Server {
 				return p;
 			}
 		});
+
+		// Update action: if the appropriate k-bucket is full, then the recipient pings the k-bucket’s least-recently
+		// seen node to decide what to do
+		updateAction = new ReplaceAction() {
+			@Override
+			public Contact replace(Contact leastRecent, Contact newContact) {
+				if (sendPing(leastRecent.address)) {
+					// If the least-recently seen node responds, the new contact is discarded
+					return leastRecent;
+				} else {
+					// If the least-recently seen node fails to respond, the new contact is added
+					return newContact;
+				}
+			}
+		};
 	}
 
 	/**
@@ -163,21 +180,8 @@ public class Server {
 		// sender’s node ID
 		Contact contact = Util.toContact(req.getNodeId(), fromAddress);
 
-		Contact leastRecent = contacts.update(contact);
-
-		// If the appropriate k-bucket is full, then the recipient pings the k-bucket’s least-recently seen node to
-		// decide what to do
-		if (leastRecent != null) {
-			if (sendPing(leastRecent.address)) {
-				// If the least-recently seen node responds, it is moved to the tail of the list, and the new
-				// sender’s contact is discarded
-				contacts.update(leastRecent);
-			} else {
-				// If the least-recently seen node fails to respond, it is evicted from the k-bucket and the new
-				// sender inserted at the tail
-				contacts.add(contact);
-			}
-		}
+		// Updating the routing table with the new contact
+		routingTable.update(contact, updateAction);
 	}
 
 	/**
@@ -281,7 +285,7 @@ public class Server {
 	 */
 	private void processFindNode(Message req, Builder builder) {
 		BinaryKey key = Util.ensureHasKey(req);
-		List<Contact> closestContacts = contacts.getClosestTo(key);
+		Collection<Contact> closestContacts = routingTable.getClosestTo(key);
 		for (Contact contact : closestContacts) {
 			Node node = Util.toNode(contact);
 			builder.addNodes(node);

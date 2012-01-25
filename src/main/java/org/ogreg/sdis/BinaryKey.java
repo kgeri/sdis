@@ -5,7 +5,8 @@ import java.util.Arrays;
 /**
  * An immutable 160-bit binary key.
  * <p>
- * The value is stored in an <code>int[5]</code>. The int values are treated as if they were unsigned.
+ * The value is stored in an <code>int[5]</code>. The int values are treated as if they were unsigned. The value is
+ * interpreted as a BigEndian number.
  * <p>
  * Used at various places, but most notably as nodeId, rpcId and message key for the
  * {@link org.ogreg.sdis.kademlia.Server}.
@@ -60,6 +61,18 @@ public final class BinaryKey implements Comparable<BinaryKey> {
 			}
 		}
 		return 0;
+	}
+
+	/**
+	 * Returns true if the <code>n</code>th bit of this key is set.
+	 * <p>
+	 * Indexing is zero-based!
+	 * 
+	 * @param n
+	 * @return
+	 */
+	public boolean isSet(int n) {
+		return (value[LENGTH_INTS - 1 - (n / 32)] & (1 << n)) != 0;
 	}
 
 	/**
