@@ -13,7 +13,7 @@ import java.util.Arrays;
  * 
  * @author gergo
  */
-public final class BinaryKey implements Comparable<BinaryKey> {
+public final class BinaryKey implements Comparable<BinaryKey>, Cloneable {
 
 	/**
 	 * The number of integers used to identify nodes and store and retrieve data.
@@ -63,45 +63,23 @@ public final class BinaryKey implements Comparable<BinaryKey> {
 		return 0;
 	}
 
+	@Override
+	public BinaryKey clone() {
+		int[] copy = new int[LENGTH_INTS];
+		System.arraycopy(value, 0, copy, 0, LENGTH_INTS);
+		return new BinaryKey(copy);
+	}
+
 	/**
 	 * Returns true if the <code>n</code>th bit of this key is set.
 	 * <p>
-	 * Indexing is zero-based!
+	 * Indexing is zero-based! Indexing starts from the leftmost (most significant) bit.
 	 * 
 	 * @param n
 	 * @return
 	 */
 	public boolean isSet(int n) {
-		return (value[LENGTH_INTS - 1 - (n / 32)] & (1 << n)) != 0;
-	}
-
-	/**
-	 * Returns the floor of the logarithm (<code>i</code>) of the distance between this key and <code>val</code>.
-	 * <p>
-	 * <code>
-	 * 2<sup>i</sup> <= distance(this, val) < 2<sup>i+1</sup>
-	 * </code> The result is:
-	 * <ul>
-	 * <li>-1, if the distance is zero
-	 * <li>0, if the distance is one
-	 * <li>{@link #LENGTH_BITS}-1 if the distance is maximal
-	 * </ul>
-	 * 
-	 * @return The floor of the logarithm of the distance, -1 if the distance is 0
-	 */
-	public int logarithmOfDistance(BinaryKey val) {
-		// Using that floor(log2(x)) = bits - 1 - nlz(x)
-		int nlz = 0;
-		for (int i = 0; i < LENGTH_INTS; i++) {
-			int d = value[i] ^ val.value[i];
-			if (d == 0) {
-				nlz += 32;
-			} else {
-				nlz += Integer.numberOfLeadingZeros(d);
-				break;
-			}
-		}
-		return LENGTH_INTS - 1 - nlz;
+		return (value[n / 32] & (1 << (31 - n))) != 0;
 	}
 
 	/**
