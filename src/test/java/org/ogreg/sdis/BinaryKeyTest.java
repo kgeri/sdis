@@ -7,6 +7,7 @@ import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
+import java.util.Arrays;
 import java.util.Random;
 
 import org.testng.annotations.Test;
@@ -24,7 +25,7 @@ public class BinaryKeyTest {
 	/**
 	 * Ensures that the key is immutable.
 	 */
-	public void testImmutalibity() throws Exception {
+	public void testImmutability() throws Exception {
 
 		// Changing the original array should not affect the key
 		byte[] bytes = new byte[20];
@@ -58,7 +59,7 @@ public class BinaryKeyTest {
 		// IF a.compareTo(b) = 0 THEN sgn(a.compareTo(c)) == sgn(b.compareTo(c))
 		// IF a.compareTo(b) = 0 THEN a.equals(b)
 		for (int i = 0; i < 100; i++) {
-			BinaryKey a = randomKey(), b = a.clone(), c = randomKey();
+			BinaryKey a = randomKey(), b = new BinaryKey(a.toByteArray()), c = randomKey();
 
 			if (a.compareTo(b) == 0) {
 				assertEquals(Math.signum(a.compareTo(c)), Math.signum(b.compareTo(c)));
@@ -93,6 +94,20 @@ public class BinaryKeyTest {
 	}
 
 	/**
+	 * Tests {@link BinaryKey#hashCode()} and {@link BinaryKey#equals(Object)} just for coverage.
+	 */
+	public void testHashCodeEquals() throws Exception {
+		BinaryKey a = randomKey();
+
+		assertEquals(a, a);
+		assertFalse(a.equals(null));
+		assertFalse(a.equals(""));
+
+		assertEquals(a.hashCode(), a.hashCode());
+		assertEquals(a.hashCode(), a.clone().hashCode());
+	}
+
+	/**
 	 * Ensures that various cloning operations are done properly.
 	 */
 	public void testCloning() throws Exception {
@@ -107,6 +122,11 @@ public class BinaryKeyTest {
 		// Cloning copies the internal representation
 		volat[0] = 1;
 		assertNotEquals(a, b);
+
+		// toByteArray is the same as the input array
+		byte[] input = new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, -1, -2, -3, -4, -5, -6, -7, -8, -9 };
+		BinaryKey c = new BinaryKey(input);
+		assertTrue(Arrays.equals(c.toByteArray(), input));
 
 		// toByteArray clones the contents
 		byte[] aarr = a.toByteArray();

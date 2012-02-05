@@ -94,10 +94,10 @@ public class CommonUtil {
 		int v;
 		for (int i = 0; i < ret.length; i += 4) {
 			v = value[i / 4];
-			ret[i] = (byte) ((v << 24) & 0xFF);
-			ret[i] = (byte) ((v << 16) & 0xFF);
-			ret[i] = (byte) ((v << 8) & 0xFF);
-			ret[i] = (byte) (v & 0xFF);
+			ret[i] = (byte) (v >> 24);
+			ret[i + 1] = (byte) (v >> 16);
+			ret[i + 2] = (byte) (v >> 8);
+			ret[i + 3] = (byte) v;
 		}
 
 		return ret;
