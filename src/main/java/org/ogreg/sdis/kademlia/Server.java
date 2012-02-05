@@ -61,6 +61,11 @@ public class Server {
 	private static final int CLOSE_TIMEOUT_MS = 3000;
 
 	/**
+	 * The maximum number of contacts stored in a k-bucket (k).
+	 */
+	private static final int MAX_CONTACTS = 20;
+
+	/**
 	 * The port on which the server listens.
 	 */
 	private int port;
@@ -89,7 +94,7 @@ public class Server {
 	public Server(StorageService store, BinaryKey nodeId) {
 		this.store = store;
 		this.nodeId = ByteString.copyFrom(nodeId.toByteArray());
-		this.routingTable = new RoutingTableTreeImpl(nodeId);
+		this.routingTable = new RoutingTableTreeImpl(nodeId, MAX_CONTACTS);
 
 		NioServerSocketChannelFactory serverChannelFactory = new NioServerSocketChannelFactory(
 				Executors.newCachedThreadPool(), Executors.newCachedThreadPool());

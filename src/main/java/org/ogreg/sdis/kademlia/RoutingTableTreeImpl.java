@@ -17,23 +17,26 @@ import org.ogreg.sdis.BinaryKey;
  */
 public class RoutingTableTreeImpl implements RoutingTable {
 
-	/**
-	 * The maximum number of contacts stored in a k-bucket (k).
-	 */
-	static final int MAX_CONTACTS = 20;
-
 	private final Node root = new Node(true, new LinkedList<Contact>());
 
 	private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
 
 	private final BinaryKey currentNodeId;
 
-	public RoutingTableTreeImpl(BinaryKey currentNodeId) {
+	private final int maxBucketSize;
+
+	public RoutingTableTreeImpl(BinaryKey currentNodeId, int maxBucketSize) {
 		this.currentNodeId = currentNodeId;
+		this.maxBucketSize = maxBucketSize;
 	}
 
 	@Override
 	public void update(Contact contact, ReplaceAction action) {
+
+		if (currentNodeId.equals(contact.nodeId)) {
+			return;
+		}
+
 		try {
 			lock.writeLock().lock();
 
@@ -52,7 +55,7 @@ public class RoutingTableTreeImpl implements RoutingTable {
 				return;
 			}
 
-			if (node.isFull()) {
+			if (node.contacts.size() >= maxBucketSize) {
 				if (node.maySplit) {
 
 					// Splitting node based on the ith bit
@@ -95,6 +98,11 @@ public class RoutingTableTreeImpl implements RoutingTable {
 		} finally {
 			lock.readLock().unlock();
 		}
+	}
+
+	@Override
+	public String toString() {
+		return root.toString();
 	}
 
 	/**
@@ -188,8 +196,18 @@ public class RoutingTableTreeImpl implements RoutingTable {
 			return contacts == null;
 		}
 
-		private boolean isFull() {
-			return contacts.size() >= MAX_CONTACTS;
+		@Override
+		public String toString() {
+			if (hasChildNodes()) {
+				return new StringBuilder().append('(').append(left).append(")(").append(right).append(')').toString();
+			} else {
+				StringBuilder buf = new StringBuilder();
+				for (Contact contact : contacts) {
+					buf.append(contact.nodeId.toString());
+					buf.append(',');
+				}
+				return buf.length() == 0 ? "" : buf.substring(0, buf.length() - 1);
+			}
 		}
 	}
 }
