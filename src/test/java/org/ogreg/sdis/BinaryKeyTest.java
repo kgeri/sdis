@@ -69,31 +69,6 @@ public class BinaryKeyTest {
 	}
 
 	/**
-	 * Ensures that the isSet method works for all edge cases.
-	 */
-	public void testIsSet() throws Exception {
-		// 00000001 00000001 00000001 ... 00000001
-		BinaryKey a = new BinaryKey(new byte[] { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 });
-
-		assertFalse(a.isSet(0));
-		assertTrue(a.isSet(7));
-		assertFalse(a.isSet(8));
-		assertTrue(a.isSet(15));
-		assertFalse(a.isSet(16));
-		assertTrue(a.isSet(159));
-
-		// You can be a bit stupid...
-		assertTrue(a.isSet(-1));
-
-		// ...but not too much
-		try {
-			assertTrue(a.isSet(161));
-			fail("Expected ArrayIndexOutOfBoundsException");
-		} catch (ArrayIndexOutOfBoundsException e) {
-		}
-	}
-
-	/**
 	 * Tests {@link BinaryKey#hashCode()} and {@link BinaryKey#equals(Object)} just for coverage.
 	 */
 	public void testHashCodeEquals() throws Exception {
@@ -136,6 +111,16 @@ public class BinaryKeyTest {
 	}
 
 	/**
+	 * Tests {@link BinaryKey#xor(BinaryKey)}.
+	 */
+	public void testXOR() throws Exception {
+		assertEquals(Arrays.toString(key(0, 0, 0, 0, 1).xor(key(0, 0, 0, 0, 1))), "[0, 0, 0, 0, 0]");
+		assertEquals(Arrays.toString(key(1, 0, 1, 0, 0).xor(key(0, 0, 0, 0, 1))), "[1, 0, 1, 0, 1]");
+		assertEquals(Arrays.toString(key(0xFFFFFFFF, 0, 0, 0, 1).xor(key(0x7FFFFFFF, 0, 0, 0, 1))),
+				"[-2147483648, 0, 0, 0, 0]");
+	}
+
+	/**
 	 * Ensures error cases are handled properly.
 	 */
 	public void testErrors() throws Exception {
@@ -155,11 +140,15 @@ public class BinaryKeyTest {
 		}
 	}
 
-	private BinaryKey randomKey() {
+	BinaryKey randomKey() {
 		int[] value = new int[BinaryKey.LENGTH_INTS];
 		for (int i = 0; i < BinaryKey.LENGTH_INTS; i++) {
 			value[i] = Rnd.nextInt();
 		}
+		return new BinaryKey(value);
+	}
+
+	BinaryKey key(int... value) {
 		return new BinaryKey(value);
 	}
 }

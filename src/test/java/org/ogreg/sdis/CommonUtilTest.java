@@ -45,4 +45,17 @@ public class CommonUtilTest {
 		} catch (IllegalArgumentException e) {
 		}
 	}
+
+	/**
+	 * Tests {@link CommonUtil#nlz()}.
+	 */
+	public void testNLZ() throws Exception {
+		assertEquals(CommonUtil.nlz(new int[] { 0, 0, 0, 0, 0 }), 160);
+		assertEquals(CommonUtil.nlz(new int[] { 0, 0, 0, 0, 1 }), 159);
+		assertEquals(CommonUtil.nlz(new int[] { 0, 0, 0, 0, 2 }), 158);
+		assertEquals(CommonUtil.nlz(new int[] { 0, 0, 0, 0, 3 }), 158);
+		assertEquals(CommonUtil.nlz(new int[] { 0, 0, 1, 0, 0 }), 95);
+		assertEquals(CommonUtil.nlz(new int[] { 0x7FFFFFFF, 0, 0, 0, 0 }), 1);
+		assertEquals(CommonUtil.nlz(new int[] { 0xFFFFFFFF, 0, 0, 0, 0 }), 0);
+	}
 }

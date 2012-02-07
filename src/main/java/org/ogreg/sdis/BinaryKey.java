@@ -51,6 +51,17 @@ public final class BinaryKey implements Comparable<BinaryKey>, Cloneable {
 		this.value = value;
 	}
 
+	/**
+	 * @return A new int[5] holding the result of (this XOR other).
+	 */
+	public int[] xor(BinaryKey other) {
+		int[] xor = new int[LENGTH_INTS];
+		for (int i = 0; i < LENGTH_INTS; i++) {
+			xor[i] = value[i] ^ other.value[i];
+		}
+		return xor;
+	}
+
 	@Override
 	public int compareTo(BinaryKey o) {
 		for (int i = 0; i < LENGTH_INTS; i++) {
@@ -68,18 +79,6 @@ public final class BinaryKey implements Comparable<BinaryKey>, Cloneable {
 		int[] copy = new int[LENGTH_INTS];
 		System.arraycopy(value, 0, copy, 0, LENGTH_INTS);
 		return new BinaryKey(copy);
-	}
-
-	/**
-	 * Returns true if the <code>n</code>th bit of this key is set.
-	 * <p>
-	 * Indexing is zero-based! Indexing starts from the leftmost (most significant) bit.
-	 * 
-	 * @param n
-	 * @return
-	 */
-	public boolean isSet(int n) {
-		return (value[n / 32] & (1 << (31 - n))) != 0;
 	}
 
 	/**

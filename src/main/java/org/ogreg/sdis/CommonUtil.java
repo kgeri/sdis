@@ -102,4 +102,21 @@ public class CommonUtil {
 
 		return ret;
 	}
+
+	/**
+	 * Returns the Number of Leading Zeros of the binary value specified in an int[].
+	 * 
+	 * @param value
+	 * @return
+	 */
+	public static int nlz(int[] value) {
+		int len = value.length;
+		for (int i = 0; i < len; i++) {
+			int d = value[i];
+			if (d != 0) {
+				return i * Integer.SIZE + Integer.numberOfLeadingZeros(d);
+			}
+		}
+		return len * Integer.SIZE;
+	}
 }

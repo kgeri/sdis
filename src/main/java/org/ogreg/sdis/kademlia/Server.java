@@ -94,7 +94,7 @@ public class Server {
 	public Server(StorageService store, BinaryKey nodeId) {
 		this.store = store;
 		this.nodeId = ByteString.copyFrom(nodeId.toByteArray());
-		this.routingTable = new RoutingTableTreeImpl(nodeId, MAX_CONTACTS);
+		this.routingTable = new RoutingTableFixedImpl(nodeId, MAX_CONTACTS);
 
 		NioServerSocketChannelFactory serverChannelFactory = new NioServerSocketChannelFactory(
 				Executors.newCachedThreadPool(), Executors.newCachedThreadPool());
@@ -290,7 +290,7 @@ public class Server {
 	 */
 	private void processFindNode(Message req, Builder builder) {
 		BinaryKey key = Util.ensureHasKey(req);
-		Collection<Contact> closestContacts = routingTable.getClosestTo(key);
+		Collection<Contact> closestContacts = routingTable.getClosestTo(key, MAX_CONTACTS);
 		for (Contact contact : closestContacts) {
 			Node node = Util.toNode(contact);
 			builder.addNodes(node);

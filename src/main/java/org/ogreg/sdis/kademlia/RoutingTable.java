@@ -33,12 +33,13 @@ interface RoutingTable {
 	void remove(Contact contact);
 
 	/**
-	 * Returns the {@link Contact}s closest to <code>key</code>.
+	 * Tries to return at most <code>k</code> {@link Contact}s closest to <code>nodeId</code>.
 	 * 
-	 * @param key
+	 * @param nodeId
+	 * @param k
 	 * @return
 	 */
-	Collection<Contact> getClosestTo(BinaryKey key);
+	Collection<Contact> getClosestTo(BinaryKey nodeId, int k);
 }
 
 /**
@@ -103,5 +104,10 @@ class Contact {
 		} else if (!nodeId.equals(other.nodeId))
 			return false;
 		return true;
+	}
+
+	@Override
+	public String toString() {
+		return "Contact [nodeId=" + nodeId + ", address=" + address + "]";
 	}
 }
