@@ -5,9 +5,11 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Random;
 
-import org.ogreg.sdis.BinaryKey;
 import org.ogreg.sdis.kademlia.Protocol.Message;
+import org.ogreg.sdis.kademlia.Protocol.Message.Builder;
+import org.ogreg.sdis.kademlia.Protocol.MessageType;
 import org.ogreg.sdis.kademlia.Protocol.Node;
+import org.ogreg.sdis.model.BinaryKey;
 
 import com.google.protobuf.ByteString;
 
@@ -123,6 +125,16 @@ class Util {
 	 */
 	public static Contact toContact(ByteString nodeId, InetSocketAddress address) {
 		return new Contact(new BinaryKey(nodeId.toByteArray()), address);
+	}
+
+	/**
+	 * @param nodeId
+	 * @param type
+	 * @return An initialized message builder with the specified type and node id set.
+	 */
+	public static Builder message(MessageType type, ByteString nodeId) {
+		ByteString rpcId = Util.generateByteStringId();
+		return Message.newBuilder().setType(type).setNodeId(nodeId).setRpcId(rpcId);
 	}
 
 	private static MessageDigest createSHA1Digest() {

@@ -3,7 +3,7 @@ package org.ogreg.sdis.kademlia;
 import java.net.InetSocketAddress;
 import java.util.Collection;
 
-import org.ogreg.sdis.BinaryKey;
+import org.ogreg.sdis.model.BinaryKey;
 
 /**
  * Common interface for Kademlia routing table implementations.

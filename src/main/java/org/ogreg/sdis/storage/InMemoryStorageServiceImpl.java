@@ -4,8 +4,8 @@ import java.nio.ByteBuffer;
 import java.util.Map;
 
 import org.jboss.netty.util.internal.ConcurrentHashMap;
-import org.ogreg.sdis.BinaryKey;
 import org.ogreg.sdis.StorageService;
+import org.ogreg.sdis.model.BinaryKey;
 
 /**
  * A simple in-memory storage service (for testing purposes only).

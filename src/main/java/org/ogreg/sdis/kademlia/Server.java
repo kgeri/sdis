@@ -1,7 +1,9 @@
 package org.ogreg.sdis.kademlia;
 
+import static org.ogreg.sdis.kademlia.Protocol.MessageType.REQ_PING;
 import static org.ogreg.sdis.kademlia.Protocol.MessageType.RSP_IO_ERROR;
 import static org.ogreg.sdis.kademlia.Protocol.MessageType.RSP_SUCCESS;
+import static org.ogreg.sdis.kademlia.Util.message;
 
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
@@ -15,6 +17,7 @@ import java.util.concurrent.TimeoutException;
 import org.jboss.netty.bootstrap.ClientBootstrap;
 import org.jboss.netty.bootstrap.ServerBootstrap;
 import org.jboss.netty.channel.Channel;
+import org.jboss.netty.channel.ChannelException;
 import org.jboss.netty.channel.ChannelFuture;
 import org.jboss.netty.channel.ChannelHandlerContext;
 import org.jboss.netty.channel.ChannelPipeline;
@@ -24,18 +27,21 @@ import org.jboss.netty.channel.Channels;
 import org.jboss.netty.channel.ExceptionEvent;
 import org.jboss.netty.channel.MessageEvent;
 import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
+import org.jboss.netty.channel.group.ChannelGroup;
+import org.jboss.netty.channel.group.DefaultChannelGroup;
 import org.jboss.netty.channel.socket.nio.NioClientSocketChannelFactory;
 import org.jboss.netty.channel.socket.nio.NioServerSocketChannelFactory;
 import org.jboss.netty.handler.codec.protobuf.ProtobufDecoder;
 import org.jboss.netty.handler.codec.protobuf.ProtobufEncoder;
 import org.jboss.netty.handler.codec.protobuf.ProtobufVarint32FrameDecoder;
 import org.jboss.netty.handler.codec.protobuf.ProtobufVarint32LengthFieldPrepender;
-import org.ogreg.sdis.BinaryKey;
+import org.ogreg.sdis.P2PService;
 import org.ogreg.sdis.StorageService;
 import org.ogreg.sdis.kademlia.Protocol.Message;
 import org.ogreg.sdis.kademlia.Protocol.Message.Builder;
 import org.ogreg.sdis.kademlia.Protocol.MessageType;
 import org.ogreg.sdis.kademlia.Protocol.Node;
+import org.ogreg.sdis.model.BinaryKey;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,7 +52,7 @@ import com.google.protobuf.ByteString;
  * 
  * @author gergo
  */
-public class Server {
+public class Server implements P2PService {
 
 	private static final Logger log = LoggerFactory.getLogger(Server.class);
 
@@ -66,9 +72,14 @@ public class Server {
 	private static final int MAX_CONTACTS = 20;
 
 	/**
-	 * The port on which the server listens.
+	 * The first port on which the server tries to listen (inclusive).
 	 */
-	private int port;
+	private int portFrom;
+
+	/**
+	 * The last port on which the server listens (inclusive).
+	 */
+	private int portTo;
 
 	/**
 	 * The storage service used for loading and saving blocks of data.
@@ -86,8 +97,10 @@ public class Server {
 	private final ByteString nodeId;
 
 	private ServerBootstrap server;
-
 	private ClientBootstrap client;
+
+	private ChannelGroup channels = null;
+	private InetSocketAddress address = null;
 
 	private ReplaceAction updateAction;
 
@@ -95,6 +108,31 @@ public class Server {
 		this.store = store;
 		this.nodeId = ByteString.copyFrom(nodeId.toByteArray());
 		this.routingTable = new RoutingTableFixedImpl(nodeId, MAX_CONTACTS);
+
+		// Update action: if the appropriate k-bucket is full, then the recipient pings the k-bucket’s least-recently
+		// seen node to decide what to do
+		updateAction = new ReplaceAction() {
+			@Override
+			public Contact replace(Contact leastRecent, Contact newContact) {
+				if (sendPingSync(leastRecent.address)) {
+					// If the least-recently seen node responds, the new contact is discarded
+					return leastRecent;
+				} else {
+					// If the least-recently seen node fails to respond, the new contact is added
+					return newContact;
+				}
+			}
+		};
+	}
+
+	/**
+	 * Starts listening on {@link #port}.
+	 */
+	public synchronized void start() {
+
+		if (channels != null) {
+			throw new IllegalStateException("Kademlia server already started. Channels: " + channels);
+		}
 
 		NioServerSocketChannelFactory serverChannelFactory = new NioServerSocketChannelFactory(
 				Executors.newCachedThreadPool(), Executors.newCachedThreadPool());
@@ -127,57 +165,83 @@ public class Server {
 			}
 		});
 
-		// Update action: if the appropriate k-bucket is full, then the recipient pings the k-bucket’s least-recently
-		// seen node to decide what to do
-		updateAction = new ReplaceAction() {
-			@Override
-			public Contact replace(Contact leastRecent, Contact newContact) {
-				if (sendPing(leastRecent.address)) {
-					// If the least-recently seen node responds, the new contact is discarded
-					return leastRecent;
+		channels = new DefaultChannelGroup("kademlia");
+
+		for (int port = portFrom; port <= portTo; port++) {
+			try {
+				address = new InetSocketAddress(port);
+				server.bind(address);
+				break;
+			} catch (ChannelException e) {
+				if (port < portTo) {
+					log.warn("Failed to bind {}, trying next in range ({} - {})",
+							new Object[] { port, portFrom, portTo });
 				} else {
-					// If the least-recently seen node fails to respond, the new contact is added
-					return newContact;
+					log.error("Failed to bind port range ({} - {})", portFrom, portTo);
+					address = null;
+					channels = null;
+					throw e;
 				}
 			}
-		};
+		}
 	}
 
 	/**
-	 * Starts listening on {@link #port}.
+	 * Stops the Kademlia server.
 	 */
-	public void start() {
-		server.bind(new InetSocketAddress(port));
+	public synchronized void stop() {
+		if (channels != null) {
+			channels.close().awaitUninterruptibly();
+			client.releaseExternalResources();
+			server.releaseExternalResources();
+			channels = null;
+		}
 	}
 
-	public void setPort(int port) {
-		this.port = port;
+	@Override
+	public void add(InetSocketAddress address) {
+		sendPingSync(address);
 	}
 
 	/**
-	 * Sends a {@link MessageType#REQ_PING} to <code>address</code>.
+	 * Sets the specified port range for this server (inclusive). Won't have effect until the server is restarted.
+	 * 
+	 * @param from
+	 * @param to
+	 */
+	public void setPortRange(int from, int to) {
+		this.portFrom = Math.min(from, to);
+		this.portTo = Math.max(from, to);
+	}
+
+	// The bound server address, or null if the server is not bound.
+	InetSocketAddress getAddress() {
+		return address;
+	}
+
+	// The nodeId of this server.
+	ByteString getNodeId() {
+		return nodeId;
+	}
+
+	/**
+	 * Sends a {@link MessageType#REQ_PING} to <code>address</code> synchronously.
 	 * 
 	 * @param address
 	 * 
 	 * @return true if the remote node responded successfully
 	 */
-	public boolean sendPing(InetSocketAddress address) {
-		Message message = newMessageBuilder().setType(MessageType.REQ_PING).build();
+	private boolean sendPingSync(InetSocketAddress address) {
+		Message message = message(REQ_PING, nodeId).build();
 		try {
-			Message response = sendMessage(message, address);
+			Message response = sendMessageSync(message, address);
 			return response.getType().equals(RSP_SUCCESS);
 		} catch (TimeoutException e) {
 			log.debug("{}", e.getLocalizedMessage());
 		} catch (InterruptedException e) {
-			log.debug("{} was interrupted", MessageType.REQ_PING);
+			log.debug("{} was interrupted", REQ_PING);
 		}
 		return false;
-	}
-
-	// Creates an initialized message builder with no type set
-	private Builder newMessageBuilder() {
-		ByteString rpcId = Util.generateByteStringId();
-		return Message.newBuilder().setNodeId(nodeId).setRpcId(rpcId);
 	}
 
 	private void onMessageReceived(Message req, InetSocketAddress fromAddress) {
@@ -201,8 +265,8 @@ public class Server {
 	 * @throws InterruptedException
 	 *             if the request was interrupted
 	 */
-	private Message sendMessage(Message message, InetSocketAddress address) throws TimeoutException,
-			InterruptedException {
+	// Package private for unit testing
+	Message sendMessageSync(Message message, InetSocketAddress address) throws TimeoutException, InterruptedException {
 
 		ChannelFuture future = client.connect(address);
 
@@ -234,10 +298,10 @@ public class Server {
 	 * A {@link MessageType#RSP_SUCCESS}.
 	 * 
 	 * @param req
-	 * @param builder
+	 * @return
 	 */
-	private void processPing(Message req, Builder builder) {
-		builder.setType(RSP_SUCCESS);
+	private Message processPing(Message req) {
+		return message(RSP_SUCCESS, nodeId).build();
 	}
 
 	/**
@@ -255,9 +319,9 @@ public class Server {
 	 * A {@link MessageType#RSP_SUCCESS} a {@link MessageType#RSP_IO_ERROR}.
 	 * 
 	 * @param req
-	 * @param builder
+	 * @return
 	 */
-	private void processStore(Message req, Builder builder) {
+	private Message processStore(Message req) {
 		BinaryKey key = Util.ensureHasKey(req);
 		ByteString data = Util.ensureHasData(req);
 
@@ -265,10 +329,10 @@ public class Server {
 
 		if (computedKey.equals(key)) {
 			store.store(key, data.asReadOnlyByteBuffer());
-			builder.setType(RSP_SUCCESS);
+			return message(RSP_SUCCESS, nodeId).build();
 		} else {
 			log.error("Data chunk cheksum mismatch (" + key + " != " + computedKey + ")");
-			builder.setType(RSP_IO_ERROR);
+			return message(RSP_IO_ERROR, nodeId).build();
 		}
 	}
 
@@ -286,15 +350,17 @@ public class Server {
 	 * A {@link MessageType#RSP_SUCCESS} along with the a list of {@link Node}s which are closer to the searched key.
 	 * 
 	 * @param req
-	 * @param builder
+	 * @return
 	 */
-	private void processFindNode(Message req, Builder builder) {
+	private Message processFindNode(Message req) {
 		BinaryKey key = Util.ensureHasKey(req);
+		Builder builder = message(RSP_SUCCESS, nodeId);
 		Collection<Contact> closestContacts = routingTable.getClosestTo(key, MAX_CONTACTS);
 		for (Contact contact : closestContacts) {
 			Node node = Util.toNode(contact);
 			builder.addNodes(node);
 		}
+		return builder.build();
 	}
 
 	/**
@@ -312,15 +378,15 @@ public class Server {
 	 * {@link #processFindNode(Message, Builder)} to return the k closest nodes.
 	 * 
 	 * @param req
-	 * @param builder
+	 * @return
 	 */
-	private void processFindValue(Message req, Builder builder) {
+	private Message processFindValue(Message req) {
 		BinaryKey key = Util.ensureHasKey(req);
 		ByteBuffer dataBuffer = store.load(key);
 		if (dataBuffer != null) {
-			builder.setData(ByteString.copyFrom(dataBuffer));
+			return message(RSP_SUCCESS, nodeId).setData(ByteString.copyFrom(dataBuffer)).build();
 		} else {
-			processFindNode(req, builder);
+			return processFindNode(req);
 		}
 	}
 
@@ -339,9 +405,9 @@ public class Server {
 	 * Internal processing, nothing is returned.
 	 * 
 	 * @param req
-	 * @param builder
+	 * @return
 	 */
-	private void processSuccess(Message req, Builder builder) {
+	private void processSuccess(Message req) {
 		// TODO process success result based on rpc id
 	}
 
@@ -358,9 +424,8 @@ public class Server {
 	 * Internal processing, nothing is returned.
 	 * 
 	 * @param req
-	 * @param builder
 	 */
-	private void processIOError(Message req, Builder builder) {
+	private void processIOError(Message req) {
 		// TODO process IO error result based on rpc id
 	}
 
@@ -389,6 +454,7 @@ public class Server {
 
 		@Override
 		public void channelOpen(ChannelHandlerContext ctx, ChannelStateEvent e) throws Exception {
+			channels.add(e.getChannel());
 			channel = e.getChannel();
 			super.channelOpen(ctx, e);
 		}
@@ -414,34 +480,40 @@ public class Server {
 
 			onMessageReceived(req, (InetSocketAddress) e.getRemoteAddress());
 
-			Builder builder = newMessageBuilder();
+			Message rsp;
 
 			// Processing messages
 			switch (req.getType()) {
 			case REQ_PING:
-				processPing(req, builder);
+				rsp = processPing(req);
 				break;
 			case REQ_STORE:
-				processStore(req, builder);
+				rsp = processStore(req);
 				break;
 			case REQ_FIND_NODE:
-				processFindNode(req, builder);
+				rsp = processFindNode(req);
 				break;
 			case REQ_FIND_VALUE:
-				processFindValue(req, builder);
+				rsp = processFindValue(req);
 				break;
 			case RSP_SUCCESS:
-				processSuccess(req, builder);
-				break;
+				processSuccess(req);
+				return;
 			case RSP_IO_ERROR:
-				processIOError(req, builder);
-				break;
+				processIOError(req);
+				return;
 			default:
 				unsupportedMessage(e, req);
 				return;
 			}
 
-			ctx.getChannel().write(builder.build());
+			ctx.getChannel().write(rsp);
+		}
+
+		@Override
+		public void channelOpen(ChannelHandlerContext ctx, ChannelStateEvent e) throws Exception {
+			channels.add(e.getChannel());
+			super.channelOpen(ctx, e);
 		}
 
 		@Override

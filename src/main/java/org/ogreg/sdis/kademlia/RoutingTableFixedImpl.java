@@ -6,8 +6,8 @@ import java.util.Deque;
 import java.util.LinkedList;
 import java.util.List;
 
-import org.ogreg.sdis.BinaryKey;
 import org.ogreg.sdis.CommonUtil;
+import org.ogreg.sdis.model.BinaryKey;
 
 /**
  * A fixed-length k-bucket implementation of the {@link RoutingTable}.

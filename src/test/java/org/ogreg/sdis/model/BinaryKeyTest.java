@@ -1,4 +1,4 @@
-package org.ogreg.sdis;
+package org.ogreg.sdis.model;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -10,6 +10,7 @@ import static org.testng.Assert.fail;
 import java.util.Arrays;
 import java.util.Random;
 
+import org.ogreg.sdis.model.BinaryKey;
 import org.testng.annotations.Test;
 
 /**

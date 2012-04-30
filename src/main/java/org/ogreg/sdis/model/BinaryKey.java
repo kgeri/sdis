@@ -1,6 +1,8 @@
-package org.ogreg.sdis;
+package org.ogreg.sdis.model;
 
 import java.util.Arrays;
+
+import org.ogreg.sdis.CommonUtil;
 
 /**
  * An immutable 160-bit binary key.

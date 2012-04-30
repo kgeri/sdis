@@ -4,7 +4,7 @@ import static org.testng.Assert.assertEquals;
 
 import java.util.Arrays;
 
-import org.ogreg.sdis.BinaryKey;
+import org.ogreg.sdis.model.BinaryKey;
 import org.testng.annotations.Test;
 
 /**
