@@ -171,6 +171,7 @@ public class Server implements P2PService {
 			try {
 				address = new InetSocketAddress(port);
 				server.bind(address);
+				log.info("Kademlia server started at {}", address);
 				break;
 			} catch (ChannelException e) {
 				if (port < portTo) {
@@ -178,8 +179,8 @@ public class Server implements P2PService {
 							new Object[] { port, portFrom, portTo });
 				} else {
 					log.error("Failed to bind port range ({} - {})", portFrom, portTo);
-					address = null;
 					channels = null;
+					address = null;
 					throw e;
 				}
 			}
@@ -194,13 +195,27 @@ public class Server implements P2PService {
 			channels.close().awaitUninterruptibly();
 			client.releaseExternalResources();
 			server.releaseExternalResources();
+			log.info("Kademlia server stopped at {}", address);
 			channels = null;
+			address = null;
 		}
 	}
 
 	@Override
 	public void add(InetSocketAddress address) {
-		sendPingSync(address);
+		// Pinging peer
+		try {
+			// TODO Async pinging
+			Message rsp = sendMessageSync(message(REQ_PING, nodeId).build(), address);
+			if (rsp.getType().equals(RSP_SUCCESS)) {
+				onMessageReceived(rsp, address);
+			}
+			// TODO Direct errors to GUI
+		} catch (TimeoutException e) {
+			log.debug("{}", e.getLocalizedMessage());
+		} catch (InterruptedException e) {
+			log.debug("{} was interrupted", REQ_PING);
+		}
 	}
 
 	/**
@@ -466,7 +481,7 @@ public class Server implements P2PService {
 
 		@Override
 		public void exceptionCaught(ChannelHandlerContext ctx, ExceptionEvent e) throws Exception {
-			log.error("Unexpected communication error", e);
+			log.error("Unexpected communication error", e.getCause());
 			e.getChannel().close();
 		}
 	}
@@ -518,7 +533,9 @@ public class Server implements P2PService {
 
 		@Override
 		public void exceptionCaught(ChannelHandlerContext ctx, ExceptionEvent e) throws Exception {
-			log.error("Unexpected communication error", e);
+			log.error("Unexpected communication error: {}. Closing connection to: {}", e.getCause()
+					.getLocalizedMessage(), e.getChannel().getRemoteAddress());
+			log.debug("Failure trace", e.getCause());
 			e.getChannel().close();
 		}
 	}

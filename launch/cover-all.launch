@@ -8,6 +8,8 @@
 <mapEntry key="org.ogreg.sdis.BinaryKeyTest" value=""/>
 <mapEntry key="org.ogreg.sdis.CommonUtilTest" value=""/>
 <mapEntry key="org.ogreg.sdis.kademlia.RoutingTableFixedImplTest" value=""/>
+<mapEntry key="org.ogreg.sdis.kademlia.ServerTest" value=""/>
+<mapEntry key="org.ogreg.sdis.model.BinaryKeyTest" value=""/>
 </mapAttribute>
 <listAttribute key="org.testng.eclipse.CLASS_TEST_LIST">
 <listEntry value="org.ogreg.sdis.BinaryKeyTest"/>
@@ -16,9 +18,10 @@
 <listEntry value="functional"/>
 </listAttribute>
 <listAttribute key="org.testng.eclipse.GROUP_LIST_CLASS">
-<listEntry value="org.ogreg.sdis.BinaryKeyTest"/>
 <listEntry value="org.ogreg.sdis.kademlia.RoutingTableFixedImplTest"/>
+<listEntry value="org.ogreg.sdis.kademlia.ServerTest"/>
 <listEntry value="org.ogreg.sdis.CommonUtilTest"/>
+<listEntry value="org.ogreg.sdis.model.BinaryKeyTest"/>
 </listAttribute>
 <stringAttribute key="org.testng.eclipse.LOG_LEVEL" value="2"/>
 <listAttribute key="org.testng.eclipse.METHOD_TEST_LIST"/>

@@ -34,6 +34,8 @@ interface RoutingTable {
 
 	/**
 	 * Tries to return at most <code>k</code> {@link Contact}s closest to <code>nodeId</code>.
+	 * <p>
+	 * Implementors should return the nodes in ascending order of their distances.
 	 * 
 	 * @param nodeId
 	 * @param k
