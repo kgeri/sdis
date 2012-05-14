@@ -1,7 +1,7 @@
 package org.ogreg.sdis.kademlia;
 
 import java.net.InetSocketAddress;
-import java.util.Collection;
+import java.util.List;
 
 import org.ogreg.sdis.model.BinaryKey;
 
@@ -41,7 +41,7 @@ interface RoutingTable {
 	 * @param k
 	 * @return
 	 */
-	Collection<Contact> getClosestTo(BinaryKey nodeId, int k);
+	List<Contact> getClosestTo(BinaryKey nodeId, int k);
 }
 
 /**

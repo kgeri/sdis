@@ -1,7 +1,6 @@
 package org.ogreg.sdis.kademlia;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Deque;
 import java.util.LinkedList;
 import java.util.List;
@@ -67,7 +66,7 @@ public class RoutingTableFixedImpl implements RoutingTable {
 	}
 
 	@Override
-	public Collection<Contact> getClosestTo(BinaryKey nodeId, int k) {
+	public List<Contact> getClosestTo(BinaryKey nodeId, int k) {
 		List<Contact> results = new ArrayList<Contact>(k);
 
 		// Calculating distance from current node

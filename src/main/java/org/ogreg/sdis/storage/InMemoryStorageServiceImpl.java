@@ -18,7 +18,7 @@ public class InMemoryStorageServiceImpl implements StorageService {
 
 	@Override
 	public ByteBuffer load(BinaryKey key) {
-		return store.get(key);
+		return (ByteBuffer) store.get(key).asReadOnlyBuffer().rewind();
 	}
 
 	@Override

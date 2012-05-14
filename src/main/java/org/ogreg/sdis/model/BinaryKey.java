@@ -1,7 +1,5 @@
 package org.ogreg.sdis.model;
 
-import java.util.Arrays;
-
 import org.ogreg.sdis.CommonUtil;
 
 /**
@@ -41,7 +39,8 @@ public final class BinaryKey implements Comparable<BinaryKey>, Cloneable {
 	/**
 	 * Creates a {@link BinaryKey} using the specified int array.
 	 * <p>
-	 * Warning: the input array is passed by reference, not copied (for performance)!
+	 * Warning: the input array is passed by reference, not copied (for performance)! The input array must have exactly
+	 * {@link #LENGTH_INTS} elements.
 	 * 
 	 * @param value
 	 */
@@ -99,9 +98,9 @@ public final class BinaryKey implements Comparable<BinaryKey>, Cloneable {
 
 	@Override
 	public int hashCode() {
-		final int prime = 31;
 		int result = 1;
-		result = prime * result + Arrays.hashCode(value);
+		for (int i = 0; i < LENGTH_INTS; i++)
+			result = 31 * result + value[i];
 		return result;
 	}
 
@@ -113,9 +112,12 @@ public final class BinaryKey implements Comparable<BinaryKey>, Cloneable {
 			return false;
 		if (getClass() != obj.getClass())
 			return false;
-		BinaryKey other = (BinaryKey) obj;
-		if (!Arrays.equals(value, other.value))
-			return false;
+		int[] otherValue = ((BinaryKey) obj).value;
+		if (value == otherValue)
+			return true;
+		for (int i = 0; i < LENGTH_INTS; i++)
+			if (value[i] != otherValue[i])
+				return false;
 		return true;
 	}
 }
