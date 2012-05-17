@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <launchConfiguration type="org.testng.eclipse.launchconfig">
+<listAttribute key="com.mountainminds.eclemma.core.SCOPE_IDS">
+<listEntry value="=sdis/src\/main\/resources"/>
+<listEntry value="=sdis/src\/main\/java"/>
+</listAttribute>
 <stringAttribute key="org.eclipse.jdt.launching.CLASSPATH_PROVIDER" value="org.eclipse.m2e.launchconfig.classpathProvider"/>
 <stringAttribute key="org.eclipse.jdt.launching.MAIN_TYPE" value="org.testng.remote.RemoteTestNG"/>
 <stringAttribute key="org.eclipse.jdt.launching.PROJECT_ATTR" value="sdis"/>
@@ -10,7 +14,6 @@
 <mapEntry key="org.ogreg.sdis.kademlia.RoutingTableFixedImplTest" value=""/>
 <mapEntry key="org.ogreg.sdis.kademlia.ServerTest" value=""/>
 <mapEntry key="org.ogreg.sdis.model.BinaryKeyTest" value=""/>
-<mapEntry key="org.ogreg.sdis.util.HeapTest" value=""/>
 </mapAttribute>
 <listAttribute key="org.testng.eclipse.CLASS_TEST_LIST">
 <listEntry value="org.ogreg.sdis.BinaryKeyTest"/>
@@ -23,7 +26,6 @@
 <listEntry value="org.ogreg.sdis.kademlia.ServerTest"/>
 <listEntry value="org.ogreg.sdis.CommonUtilTest"/>
 <listEntry value="org.ogreg.sdis.model.BinaryKeyTest"/>
-<listEntry value="org.ogreg.sdis.util.HeapTest"/>
 </listAttribute>
 <stringAttribute key="org.testng.eclipse.LOG_LEVEL" value="2"/>
 <listAttribute key="org.testng.eclipse.METHOD_TEST_LIST"/>

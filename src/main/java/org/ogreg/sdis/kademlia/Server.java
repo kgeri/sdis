@@ -226,9 +226,11 @@ public class Server implements P2PService {
 		// Pinging peer
 		try {
 			// TODO Async pinging
-			Message rsp = sendMessageSync(message(REQ_PING, nodeId).build(), address);
+			Message rsp = sendMessageSync(message(REQ_PING, nodeId, this.address).build(), address);
 			if (rsp.getType().equals(RSP_SUCCESS)) {
-				onMessageReceived(rsp, address);
+				// TODO This should be done only in the server handler, as we should use async conversation states
+				Contact contact = Util.toContact(rsp.getNodeId(), rsp.getAddress(), rsp.getPort());
+				onMessageReceived(contact, rsp);
 			}
 			// TODO Direct errors to GUI
 		} catch (TimeoutException e) {
@@ -249,8 +251,8 @@ public class Server implements P2PService {
 
 		// TODO More efficient data transfer (skip protobuf copying)
 		ByteString dataString = ByteString.copyFrom(roData);
-		Message message = message(REQ_STORE, nodeId).setKey(ByteString.copyFrom(key.toByteArray())).setData(dataString)
-				.build();
+		ByteString keyBS = ByteString.copyFrom(key.toByteArray());
+		Message message = message(REQ_STORE, nodeId, this.address).setKey(keyBS).setData(dataString).build();
 
 		List<Contact> contacts = iterativeFindNode(key);
 		for (Contact contact : contacts) {
@@ -286,7 +288,8 @@ public class Server implements P2PService {
 			queue.add(new ContactWithDistance(contact, Util.distanceOf(key, contact.nodeId)));
 		}
 
-		Message message = message(REQ_FIND_NODE, nodeId).setKey(ByteString.copyFrom(key.toByteArray())).build();
+		ByteString keyBS = ByteString.copyFrom(key.toByteArray());
+		Message message = message(REQ_FIND_NODE, nodeId, this.address).setKey(keyBS).build();
 
 		// TODO Time-limited operation (?)
 		ContactWithDistance cwd;
@@ -322,7 +325,7 @@ public class Server implements P2PService {
 
 				// Adding resulting nodes to queue
 				for (Node node : rsp.getNodesList()) {
-					Contact newContact = Util.toContact(node);
+					Contact newContact = Util.toContact(node.getNodeId(), node.getAddress(), node.getPort());
 					queue.add(new ContactWithDistance(newContact, Util.distanceOf(key, newContact.nodeId)));
 				}
 			}
@@ -360,7 +363,7 @@ public class Server implements P2PService {
 	 * @return true if the remote node responded successfully
 	 */
 	private boolean sendPingSync(InetSocketAddress address) {
-		Message message = message(REQ_PING, nodeId).build();
+		Message message = message(REQ_PING, nodeId, this.address).build();
 		try {
 			Message response = sendMessageSync(message, address);
 			return response.getType().equals(RSP_SUCCESS);
@@ -372,12 +375,10 @@ public class Server implements P2PService {
 		return false;
 	}
 
-	private void onMessageReceived(Message req, InetSocketAddress fromAddress) {
-		// When a Kademlia node receives any message from another node, it updates the appropriate k-bucket for the
-		// sender’s node ID
-		Contact contact = Util.toContact(req.getNodeId(), fromAddress);
+	private void onMessageReceived(Contact contact, Message req) {
 
-		// Updating the routing table with the new contact
+		// When a Kademlia node receives any message from another node, it updates the appropriate k-bucket in the
+		// routing table for the sender’s node ID
 		routingTable.update(contact, updateAction);
 	}
 
@@ -390,7 +391,8 @@ public class Server implements P2PService {
 	 * @return The future for the response received
 	 */
 	private Future<Message> sendMessageASync(Message message, InetSocketAddress address) {
-		return new MessageFuture(client.connect(address), message, address);
+		ChannelFuture channelFuture = client.connect(address);
+		return new MessageFuture(channelFuture, message, address);
 	}
 
 	/**
@@ -407,8 +409,9 @@ public class Server implements P2PService {
 	 */
 	// Package private for unit testing
 	Message sendMessageSync(Message message, InetSocketAddress address) throws TimeoutException, InterruptedException {
-		return new MessageFuture(client.connect(address), message, address).get(RESPONSE_TIMEOUT_MS,
-				TimeUnit.MILLISECONDS);
+		log.debug("Sending {} from {} to {}", new Object[] { message.getType(), this.address, address });
+		ChannelFuture channelFuture = client.connect(address);
+		return new MessageFuture(channelFuture, message, address).get(RESPONSE_TIMEOUT_MS, TimeUnit.MILLISECONDS);
 	}
 
 	/**
@@ -423,11 +426,12 @@ public class Server implements P2PService {
 	 * Results:<br>
 	 * A {@link MessageType#RSP_SUCCESS}.
 	 * 
-	 * @param req
+	 * @param requestor
+	 * @param request
 	 * @return
 	 */
-	private Message processPing(Message req) {
-		return message(RSP_SUCCESS, nodeId).build();
+	private Message processPing(Contact requestor, Message request) {
+		return message(RSP_SUCCESS, this.nodeId, this.address).build();
 	}
 
 	/**
@@ -444,23 +448,24 @@ public class Server implements P2PService {
 	 * Results:<br>
 	 * A {@link MessageType#RSP_SUCCESS} a {@link MessageType#RSP_IO_ERROR}.
 	 * 
-	 * @param req
+	 * @param requestor
+	 * @param request
 	 * @return
 	 */
-	private Message processStore(Message req) {
-		BinaryKey key = Util.ensureHasKey(req);
+	private Message processStore(Contact requestor, Message request) {
+		BinaryKey key = Util.ensureHasKey(request);
 		// TODO 2-phase STORE (first signal if we already have the data, for performance)
 		// TODO don't transfer large blocks of data with protobuf
-		ByteString data = Util.ensureHasData(req);
+		ByteString data = Util.ensureHasData(request);
 
 		BinaryKey computedKey = Util.checksum(data);
 
 		if (computedKey.equals(key)) {
 			store.store(key, data.asReadOnlyByteBuffer());
-			return message(RSP_SUCCESS, nodeId).build();
+			return message(RSP_SUCCESS, nodeId, this.address).build();
 		} else {
 			log.error("Data chunk cheksum mismatch (" + key + " != " + computedKey + ")");
-			return message(RSP_IO_ERROR, nodeId).build();
+			return message(RSP_IO_ERROR, nodeId, this.address).build();
 		}
 	}
 
@@ -477,15 +482,23 @@ public class Server implements P2PService {
 	 * Results:<br>
 	 * A {@link MessageType#RSP_SUCCESS} along with the a list of {@link Node}s which are closer to the searched key.
 	 * 
-	 * @param req
+	 * @param requestor
+	 * @param request
 	 * @return
 	 */
-	private Message processFindNode(Message req) {
-		BinaryKey key = Util.ensureHasKey(req);
-		Builder builder = message(RSP_SUCCESS, nodeId);
+	private Message processFindNode(Contact requestor, Message request) {
+		BinaryKey key = Util.ensureHasKey(request);
+		Builder builder = message(RSP_SUCCESS, this.nodeId, this.address);
+
 		Collection<Contact> closestContacts = routingTable.getClosestTo(key, MAX_CONTACTS);
-		for (Contact contact : closestContacts) {
-			Node node = Util.toNode(contact);
+		for (Contact c : closestContacts) {
+
+			// The recipient of a FIND_NODE should never return a triple containing the nodeID of the requestor
+			if (requestor.equals(c)) {
+				continue;
+			}
+
+			Node node = Util.toNode(c);
 			builder.addNodes(node);
 		}
 		return builder.build();
@@ -505,16 +518,17 @@ public class Server implements P2PService {
 	 * A {@link MessageType#RSP_SUCCESS} along with the requested data chunk if it is stored locally, or calls
 	 * {@link #processFindNode(Message, Builder)} to return the k closest nodes.
 	 * 
-	 * @param req
+	 * @param requestor
+	 * @param request
 	 * @return
 	 */
-	private Message processFindValue(Message req) {
-		BinaryKey key = Util.ensureHasKey(req);
+	private Message processFindValue(Contact requestor, Message request) {
+		BinaryKey key = Util.ensureHasKey(request);
 		ByteBuffer dataBuffer = store.load(key);
 		if (dataBuffer != null) {
-			return message(RSP_SUCCESS, nodeId).setData(ByteString.copyFrom(dataBuffer)).build();
+			return message(RSP_SUCCESS, nodeId, this.address).setData(ByteString.copyFrom(dataBuffer)).build();
 		} else {
-			return processFindNode(req);
+			return processFindNode(requestor, request);
 		}
 	}
 
@@ -557,8 +571,8 @@ public class Server implements P2PService {
 		// TODO process IO error result based on rpc id
 	}
 
-	private void unsupportedMessage(MessageEvent event, Message request) {
-		log.error("Unsupported message from: {} ({})", event.getRemoteAddress(), request);
+	private void unsupportedMessage(Contact contact, Message request) {
+		log.error("Unsupported message from: {} ({})", contact, request);
 	}
 
 	// The client handler for protobuf Kademlia messages
@@ -605,24 +619,25 @@ public class Server implements P2PService {
 		@Override
 		public void messageReceived(ChannelHandlerContext ctx, MessageEvent e) throws Exception {
 			Message req = (Message) e.getMessage();
+			Contact src = Util.toContact(req.getNodeId(), req.getAddress(), req.getPort());
 
-			onMessageReceived(req, (InetSocketAddress) e.getRemoteAddress());
+			onMessageReceived(src, req);
 
 			Message rsp;
 
 			// Processing messages
 			switch (req.getType()) {
 			case REQ_PING:
-				rsp = processPing(req);
+				rsp = processPing(src, req);
 				break;
 			case REQ_STORE:
-				rsp = processStore(req);
+				rsp = processStore(src, req);
 				break;
 			case REQ_FIND_NODE:
-				rsp = processFindNode(req);
+				rsp = processFindNode(src, req);
 				break;
 			case REQ_FIND_VALUE:
-				rsp = processFindValue(req);
+				rsp = processFindValue(src, req);
 				break;
 			case RSP_SUCCESS:
 				processSuccess(req);
@@ -631,7 +646,7 @@ public class Server implements P2PService {
 				processIOError(req);
 				return;
 			default:
-				unsupportedMessage(e, req);
+				unsupportedMessage(src, req);
 				return;
 			}
 
@@ -702,7 +717,11 @@ public class Server implements P2PService {
 
 			try {
 				ClientHandler handler = channel.getPipeline().get(ClientHandler.class);
-				return handler.sendMessage(message);
+				Message rsp = handler.sendMessage(message);
+				if (rsp == null) {
+					throw new TimeoutException(message.getType() + " to " + address + " has timed out");
+				}
+				return rsp;
 			} finally {
 				channel.close().await(CLOSE_TIMEOUT_MS, TimeUnit.MILLISECONDS);
 			}

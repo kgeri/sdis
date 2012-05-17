@@ -18,6 +18,8 @@ interface RoutingTable {
 	 * If the given table segment is full, <code>action</code> is invoked to determine which contact to use, with an
 	 * input parameter of the least recently used contact. The resulting {@link Contact} becomes the most recently used
 	 * element of the segment.
+	 * <p>
+	 * The nodeId of the current node should never be stored.
 	 * 
 	 * @param contact
 	 * 
@@ -35,7 +37,8 @@ interface RoutingTable {
 	/**
 	 * Tries to return at most <code>k</code> {@link Contact}s closest to <code>nodeId</code>.
 	 * <p>
-	 * Implementors should return the nodes in ascending order of their distances.
+	 * Implementors should return the nodes in ascending order of their distances. The current nodeId should never be
+	 * returned or stored.
 	 * 
 	 * @param nodeId
 	 * @param k

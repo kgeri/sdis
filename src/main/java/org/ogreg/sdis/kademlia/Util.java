@@ -138,30 +138,23 @@ class Util {
 	}
 
 	/**
-	 * Determines the {@link Contact} from the specified node.
-	 * 
-	 * @param node
-	 * @return
-	 */
-	public static Contact toContact(Node node) {
-		try {
-			byte[] addr = node.getAddress().toByteArray();
-			InetSocketAddress address = new InetSocketAddress(InetAddress.getByAddress(addr), node.getPort());
-			return new Contact(new BinaryKey(node.getNodeId().toByteArray()), address);
-		} catch (UnknownHostException e) {
-			throw new IllegalArgumentException("Invalid Node: " + node, e);
-		}
-	}
-
-	/**
-	 * Determines the {@link Contact} from the specified incoming message parameters.
+	 * Determines the {@link Contact} from the specified parameters.
 	 * 
 	 * @param nodeId
+	 *            The Kademlia ID of the node
 	 * @param address
+	 *            The IP address of the node (either IPv4 or IPv6)
+	 * @param port
+	 *            The port which the node uses
 	 * @return
 	 */
-	public static Contact toContact(ByteString nodeId, InetSocketAddress address) {
-		return new Contact(new BinaryKey(nodeId.toByteArray()), address);
+	public static Contact toContact(ByteString nodeId, ByteString address, int port) {
+		try {
+			InetSocketAddress addr = new InetSocketAddress(InetAddress.getByAddress(address.toByteArray()), port);
+			return new Contact(new BinaryKey(nodeId.toByteArray()), addr);
+		} catch (UnknownHostException e) {
+			throw new IllegalArgumentException("Invalid Node address: " + address, e);
+		}
 	}
 
 	/**
@@ -176,11 +169,14 @@ class Util {
 	/**
 	 * @param nodeId
 	 * @param type
+	 * @param address
 	 * @return An initialized message builder with the specified type and node id set.
 	 */
-	public static Builder message(MessageType type, ByteString nodeId) {
+	public static Builder message(MessageType type, ByteString nodeId, InetSocketAddress address) {
+		ByteString addr = ByteString.copyFrom(address.getAddress().getAddress());
+		int port = address.getPort();
 		ByteString rpcId = Util.generateByteStringId();
-		return Message.newBuilder().setType(type).setNodeId(nodeId).setRpcId(rpcId);
+		return Message.newBuilder().setType(type).setNodeId(nodeId).setAddress(addr).setPort(port).setRpcId(rpcId);
 	}
 
 	private static MessageDigest createSHA1Digest() {

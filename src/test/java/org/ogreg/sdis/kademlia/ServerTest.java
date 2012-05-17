@@ -6,6 +6,7 @@ import static org.ogreg.sdis.kademlia.Protocol.MessageType.REQ_STORE;
 import static org.ogreg.sdis.kademlia.Protocol.MessageType.RSP_SUCCESS;
 import static org.ogreg.sdis.kademlia.Util.message;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
 
 import java.nio.ByteBuffer;
 
@@ -66,7 +67,7 @@ public class ServerTest {
 	 * Ensures that a PING message is processed and a RSP_SUCCESS is returned.
 	 */
 	public void testPingMessage() throws Exception {
-		Message req = message(REQ_PING, alice.getNodeId()).build();
+		Message req = message(REQ_PING, alice.getNodeId(), alice.getAddress()).build();
 		Message rsp = alice.sendMessageSync(req, bob.getAddress());
 
 		assertEquals(rsp.getNodeId(), bob.getNodeId());
@@ -74,19 +75,21 @@ public class ServerTest {
 	}
 
 	/**
-	 * Ensures that a FIND_NODE message returns the current node and the known neighbours. Also tests that the
+	 * Ensures that a FIND_NODE message returns the known neighbours. The queried node should not be returned, as it's
+	 * useless information, because the requestor already knows about it. Also tests that the
 	 * {@link P2PService#contact(java.net.InetSocketAddress)} function tries to make contact with the specified address.
 	 */
 	public void testFindNodeMessage() throws Exception {
 		// Only Bob knows Charlie, Alice will ask Bob
 		bob.contact(charlie.getAddress());
 
-		Message req = message(REQ_FIND_NODE, alice.getNodeId()).setKey(keyBS(0, 0, 0, 0, 7)).build();
+		Message req = message(REQ_FIND_NODE, alice.getNodeId(), alice.getAddress()).setKey(keyBS(0, 0, 0, 0, 7))
+				.build();
 		Message rsp = alice.sendMessageSync(req, bob.getAddress());
 
 		assertEquals(rsp.getNodeId(), bob.getNodeId());
 		assertEquals(rsp.getType(), RSP_SUCCESS);
-		assertEquals(rsp.getNodesCount(), 2);
+		assertEquals(rsp.getNodesCount(), 1);
 		assertBSEquals(rsp.getNodes(0).getNodeId(), charlie.getNodeId());
 	}
 
@@ -99,12 +102,36 @@ public class ServerTest {
 		BinaryKey dataKey = Util.checksum(dataBS);
 		ByteString dataKeyBS = ByteString.copyFrom(dataKey.toByteArray());
 
-		Message req = message(REQ_STORE, alice.getNodeId()).setKey(dataKeyBS).setData(dataBS).build();
+		Message req = message(REQ_STORE, alice.getNodeId(), alice.getAddress()).setKey(dataKeyBS).setData(dataBS)
+				.build();
 		Message rsp = alice.sendMessageSync(req, bob.getAddress());
 
 		assertEquals(rsp.getNodeId(), bob.getNodeId());
 		assertEquals(rsp.getType(), RSP_SUCCESS);
 		assertEquals(bobStore.load(dataKey), data.rewind());
+	}
+
+	/**
+	 * Ensures that a full STORE operation - including the iterativeFindNode cycle - works and stores the content at the
+	 * appropriate nodes.
+	 */
+	public void testStore() throws Exception {
+		alice.contact(bob.getAddress());
+		bob.contact(charlie.getAddress());
+
+		ByteBuffer data = data(4096);
+		ByteString dataBS = ByteString.copyFrom(data);
+		BinaryKey dataKey = Util.checksum(dataBS);
+
+		alice.store((ByteBuffer) data.rewind());
+
+		// Because of iterativeFindNode, Alice will eventually get know of Charlie
+		// Since k is 20, it will be stored on all peers
+		assertEquals(bobStore.load(dataKey), data.rewind());
+		assertEquals(charlieStore.load(dataKey), data.rewind());
+
+		// But not on Alice
+		assertNull(aliceStore.load(dataKey));
 	}
 
 	BinaryKey key(int... value) {

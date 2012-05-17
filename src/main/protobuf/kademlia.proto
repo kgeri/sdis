@@ -20,10 +20,12 @@ enum MessageType {
 
 message Message {
 	required bytes nodeId = 1;
-	required bytes rpcId = 2;
-	required MessageType type = 3;
+	required bytes address = 2;
+	required uint32 port = 3;
+	required bytes rpcId = 4;
+	required MessageType type = 5;
 	
-	optional bytes key = 4;
-	optional bytes data = 5;
-	repeated Node nodes = 6;
+	optional bytes key = 6;
+	optional bytes data = 7;
+	repeated Node nodes = 8;
 }
