@@ -27,6 +27,8 @@ import java.util.concurrent.TimeoutException;
 
 import org.jboss.netty.bootstrap.ClientBootstrap;
 import org.jboss.netty.bootstrap.ServerBootstrap;
+import org.jboss.netty.buffer.ChannelBuffer;
+import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelException;
 import org.jboss.netty.channel.ChannelFuture;
@@ -42,10 +44,6 @@ import org.jboss.netty.channel.group.ChannelGroup;
 import org.jboss.netty.channel.group.DefaultChannelGroup;
 import org.jboss.netty.channel.socket.nio.NioClientSocketChannelFactory;
 import org.jboss.netty.channel.socket.nio.NioServerSocketChannelFactory;
-import org.jboss.netty.handler.codec.protobuf.ProtobufDecoder;
-import org.jboss.netty.handler.codec.protobuf.ProtobufEncoder;
-import org.jboss.netty.handler.codec.protobuf.ProtobufVarint32FrameDecoder;
-import org.jboss.netty.handler.codec.protobuf.ProtobufVarint32LengthFieldPrepender;
 import org.ogreg.sdis.P2PService;
 import org.ogreg.sdis.StorageService;
 import org.ogreg.sdis.kademlia.Protocol.Message;
@@ -54,6 +52,8 @@ import org.ogreg.sdis.kademlia.Protocol.MessageType;
 import org.ogreg.sdis.kademlia.Protocol.Node;
 import org.ogreg.sdis.kademlia.Util.ContactWithDistance;
 import org.ogreg.sdis.model.BinaryKey;
+import org.ogreg.sdis.util.ProtobufFrameDecoder;
+import org.ogreg.sdis.util.ProtobufFrameEncoder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -161,10 +161,8 @@ public class Server implements P2PService {
 			@Override
 			public ChannelPipeline getPipeline() throws Exception {
 				ChannelPipeline p = Channels.pipeline();
-				p.addLast("frameDecoder", new ProtobufVarint32FrameDecoder());
-				p.addLast("protobufDecoder", new ProtobufDecoder(Message.getDefaultInstance()));
-				p.addLast("frameEncoder", new ProtobufVarint32LengthFieldPrepender());
-				p.addLast("protobufEncoder", new ProtobufEncoder());
+				p.addLast("frameDecoder", new ProtobufFrameDecoder(Message.getDefaultInstance(), Frame.Factory));
+				p.addLast("frameEncoder", new ProtobufFrameEncoder());
 				p.addLast("handler", new ServerHandler());
 				return p;
 			}
@@ -176,10 +174,8 @@ public class Server implements P2PService {
 		client.setPipelineFactory(new ChannelPipelineFactory() {
 			public ChannelPipeline getPipeline() throws Exception {
 				ChannelPipeline p = Channels.pipeline();
-				p.addLast("frameDecoder", new ProtobufVarint32FrameDecoder());
-				p.addLast("protobufDecoder", new ProtobufDecoder(Message.getDefaultInstance()));
-				p.addLast("frameEncoder", new ProtobufVarint32LengthFieldPrepender());
-				p.addLast("protobufEncoder", new ProtobufEncoder());
+				p.addLast("frameDecoder", new ProtobufFrameDecoder(Message.getDefaultInstance(), Frame.Factory));
+				p.addLast("frameEncoder", new ProtobufFrameEncoder());
 				p.addLast("handler", new ClientHandler());
 				return p;
 			}
@@ -226,10 +222,12 @@ public class Server implements P2PService {
 		// Pinging peer
 		try {
 			// TODO Async pinging
-			Message rsp = sendMessageSync(message(REQ_PING, nodeId, this.address).build(), address);
-			if (rsp.getType().equals(RSP_SUCCESS)) {
+			Frame req = new Frame(message(REQ_PING, nodeId, this.address).build());
+			Frame rsp = sendMessageSync(req, address);
+			Message msg = rsp.getMessage();
+			if (msg.getType().equals(RSP_SUCCESS)) {
 				// TODO This should be done only in the server handler, as we should use async conversation states
-				Contact contact = Util.toContact(rsp.getNodeId(), rsp.getAddress(), rsp.getPort());
+				Contact contact = Util.toContact(msg.getNodeId(), msg.getAddress(), msg.getPort());
 				onMessageReceived(contact, rsp);
 			}
 			// TODO Direct errors to GUI
@@ -243,22 +241,18 @@ public class Server implements P2PService {
 	// Does an iterativeStore in the Kademlia network
 	@Override
 	public void store(ByteBuffer data) {
-		ByteBuffer roData = data.asReadOnlyBuffer();
+		// Note: if you change this, make sure data is not modified, neither directly, nor by any side-effect
+		BinaryKey key = Util.checksum(data);
 
-		roData.mark();
-		BinaryKey key = Util.checksum(roData);
-		roData.reset();
-
-		// TODO More efficient data transfer (skip protobuf copying)
-		ByteString dataString = ByteString.copyFrom(roData);
 		ByteString keyBS = ByteString.copyFrom(key.toByteArray());
-		Message message = message(REQ_STORE, nodeId, this.address).setKey(keyBS).setData(dataString).build();
+		Message message = message(REQ_STORE, nodeId, this.address).setKey(keyBS).build();
+		Frame frame = new Frame(message, ChannelBuffers.wrappedBuffer(data));
 
 		List<Contact> contacts = iterativeFindNode(key);
 		for (Contact contact : contacts) {
 			try {
-				Message rsp = sendMessageSync(message, contact.address);
-				if (!rsp.getType().equals(RSP_SUCCESS)) {
+				Frame rsp = sendMessageSync(frame, contact.address);
+				if (!rsp.getMessage().getType().equals(RSP_SUCCESS)) {
 					log.error("Store failed for: {}", contact);
 				}
 			} catch (TimeoutException e) {
@@ -290,6 +284,7 @@ public class Server implements P2PService {
 
 		ByteString keyBS = ByteString.copyFrom(key.toByteArray());
 		Message message = message(REQ_FIND_NODE, nodeId, this.address).setKey(keyBS).build();
+		Frame frame = new Frame(message);
 
 		// TODO Time-limited operation (?)
 		ContactWithDistance cwd;
@@ -302,11 +297,11 @@ public class Server implements P2PService {
 				seen.add(contact);
 			}
 
-			Message rsp;
+			Frame rsp;
 
 			try {
 				// TODO Parallel execution
-				rsp = sendMessageSync(message, contact.address);
+				rsp = sendMessageSync(frame, contact.address);
 			} catch (TimeoutException e) {
 				log.debug("FindNode timed out for: {}", contact);
 				continue;
@@ -315,7 +310,8 @@ public class Server implements P2PService {
 				break;
 			}
 
-			if (rsp.getType().equals(RSP_SUCCESS) && rsp.getNodesCount() > 0) {
+			Message msg = rsp.getMessage();
+			if (msg.getType().equals(RSP_SUCCESS) && msg.getNodesCount() > 0) {
 				results.add(contact);
 
 				// We stop if we have k successfully probed contacts
@@ -324,7 +320,7 @@ public class Server implements P2PService {
 				}
 
 				// Adding resulting nodes to queue
-				for (Node node : rsp.getNodesList()) {
+				for (Node node : msg.getNodesList()) {
 					Contact newContact = Util.toContact(node.getNodeId(), node.getAddress(), node.getPort());
 					queue.add(new ContactWithDistance(newContact, Util.distanceOf(key, newContact.nodeId)));
 				}
@@ -364,9 +360,10 @@ public class Server implements P2PService {
 	 */
 	private boolean sendPingSync(InetSocketAddress address) {
 		Message message = message(REQ_PING, nodeId, this.address).build();
+		Frame frame = new Frame(message);
 		try {
-			Message response = sendMessageSync(message, address);
-			return response.getType().equals(RSP_SUCCESS);
+			Frame response = sendMessageSync(frame, address);
+			return response.getMessage().getType().equals(RSP_SUCCESS);
 		} catch (TimeoutException e) {
 			log.debug("{}", e.getLocalizedMessage());
 		} catch (InterruptedException e) {
@@ -375,7 +372,7 @@ public class Server implements P2PService {
 		return false;
 	}
 
-	private void onMessageReceived(Contact contact, Message req) {
+	private void onMessageReceived(Contact contact, Frame frame) {
 
 		// When a Kademlia node receives any message from another node, it updates the appropriate k-bucket in the
 		// routing table for the sender’s node ID
@@ -383,22 +380,22 @@ public class Server implements P2PService {
 	}
 
 	/**
-	 * Sends the <code>message</code> to <code>address</code> asynchronously, and returns a future.
+	 * Sends the <code>frame</code> to <code>address</code> asynchronously, and returns a future.
 	 * 
-	 * @param message
+	 * @param frame
 	 * @param address
 	 * 
 	 * @return The future for the response received
 	 */
-	private Future<Message> sendMessageASync(Message message, InetSocketAddress address) {
+	private Future<Frame> sendMessageASync(Frame frame, InetSocketAddress address) {
 		ChannelFuture channelFuture = client.connect(address);
-		return new MessageFuture(channelFuture, message, address);
+		return new MessageFuture(channelFuture, frame, address);
 	}
 
 	/**
 	 * Sends the <code>message</code> to <code>address</code> synchronously, and returns the response.
 	 * 
-	 * @param message
+	 * @param frame
 	 * @param address
 	 * 
 	 * @return The response received
@@ -408,10 +405,10 @@ public class Server implements P2PService {
 	 *             if the request was interrupted
 	 */
 	// Package private for unit testing
-	Message sendMessageSync(Message message, InetSocketAddress address) throws TimeoutException, InterruptedException {
-		log.debug("Sending {} from {} to {}", new Object[] { message.getType(), this.address, address });
+	Frame sendMessageSync(Frame frame, InetSocketAddress address) throws TimeoutException, InterruptedException {
+		log.debug("Sending {} from {} to {}", new Object[] { frame.getType(), this.address, address });
 		ChannelFuture channelFuture = client.connect(address);
-		return new MessageFuture(channelFuture, message, address).get(RESPONSE_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+		return new MessageFuture(channelFuture, frame, address).get(RESPONSE_TIMEOUT_MS, TimeUnit.MILLISECONDS);
 	}
 
 	/**
@@ -430,8 +427,8 @@ public class Server implements P2PService {
 	 * @param request
 	 * @return
 	 */
-	private Message processPing(Contact requestor, Message request) {
-		return message(RSP_SUCCESS, this.nodeId, this.address).build();
+	private Frame processPing(Contact requestor, Frame request) {
+		return new Frame(message(RSP_SUCCESS, this.nodeId, this.address).build());
 	}
 
 	/**
@@ -452,21 +449,24 @@ public class Server implements P2PService {
 	 * @param request
 	 * @return
 	 */
-	private Message processStore(Contact requestor, Message request) {
-		BinaryKey key = Util.ensureHasKey(request);
+	private Frame processStore(Contact requestor, Frame request) {
+		BinaryKey key = Util.ensureHasKey(request.getMessage());
 		// TODO 2-phase STORE (first signal if we already have the data, for performance)
-		// TODO don't transfer large blocks of data with protobuf
-		ByteString data = Util.ensureHasData(request);
+		ChannelBuffer data = Util.ensureHasData(request);
 
-		BinaryKey computedKey = Util.checksum(data);
+		// TODO Make sure that this does not copy the contents
+		ByteBuffer buffer = data.toByteBuffer();
+		BinaryKey computedKey = Util.checksum(buffer);
 
+		Message message;
 		if (computedKey.equals(key)) {
-			store.store(key, data.asReadOnlyByteBuffer());
-			return message(RSP_SUCCESS, nodeId, this.address).build();
+			store.store(key, buffer);
+			message = message(RSP_SUCCESS, nodeId, this.address).build();
 		} else {
 			log.error("Data chunk cheksum mismatch (" + key + " != " + computedKey + ")");
-			return message(RSP_IO_ERROR, nodeId, this.address).build();
+			message = message(RSP_IO_ERROR, nodeId, this.address).build();
 		}
+		return new Frame(message);
 	}
 
 	/**
@@ -486,8 +486,8 @@ public class Server implements P2PService {
 	 * @param request
 	 * @return
 	 */
-	private Message processFindNode(Contact requestor, Message request) {
-		BinaryKey key = Util.ensureHasKey(request);
+	private Frame processFindNode(Contact requestor, Frame request) {
+		BinaryKey key = Util.ensureHasKey(request.getMessage());
 		Builder builder = message(RSP_SUCCESS, this.nodeId, this.address);
 
 		Collection<Contact> closestContacts = routingTable.getClosestTo(key, MAX_CONTACTS);
@@ -501,7 +501,7 @@ public class Server implements P2PService {
 			Node node = Util.toNode(c);
 			builder.addNodes(node);
 		}
-		return builder.build();
+		return new Frame(builder.build());
 	}
 
 	/**
@@ -522,11 +522,12 @@ public class Server implements P2PService {
 	 * @param request
 	 * @return
 	 */
-	private Message processFindValue(Contact requestor, Message request) {
-		BinaryKey key = Util.ensureHasKey(request);
+	private Frame processFindValue(Contact requestor, Frame request) {
+		BinaryKey key = Util.ensureHasKey(request.getMessage());
 		ByteBuffer dataBuffer = store.load(key);
 		if (dataBuffer != null) {
-			return message(RSP_SUCCESS, nodeId, this.address).setData(ByteString.copyFrom(dataBuffer)).build();
+			Message message = message(RSP_SUCCESS, nodeId, this.address).build();
+			return new Frame(message, ChannelBuffers.wrappedBuffer(dataBuffer));
 		} else {
 			return processFindNode(requestor, request);
 		}
@@ -549,7 +550,7 @@ public class Server implements P2PService {
 	 * @param req
 	 * @return
 	 */
-	private void processSuccess(Message req) {
+	private void processSuccess(Frame req) {
 		// TODO process success result based on rpc id
 	}
 
@@ -567,18 +568,18 @@ public class Server implements P2PService {
 	 * 
 	 * @param req
 	 */
-	private void processIOError(Message req) {
+	private void processIOError(Frame req) {
 		// TODO process IO error result based on rpc id
 	}
 
-	private void unsupportedMessage(Contact contact, Message request) {
+	private void unsupportedMessage(Contact contact, Frame request) {
 		log.error("Unsupported message from: {} ({})", contact, request);
 	}
 
 	// The client handler for protobuf Kademlia messages
 	private class ClientHandler extends SimpleChannelUpstreamHandler {
 
-		private final BlockingQueue<Message> responses = new LinkedBlockingQueue<Message>();
+		private final BlockingQueue<Frame> responses = new LinkedBlockingQueue<Frame>();
 
 		private volatile Channel channel;
 
@@ -589,8 +590,8 @@ public class Server implements P2PService {
 		 * @throws InterruptedException
 		 *             if the waiting for the response was interrupted
 		 */
-		public Message sendMessage(Message message) throws InterruptedException {
-			channel.write(message);
+		public Frame sendMessage(Frame frame) throws InterruptedException {
+			channel.write(frame);
 			return responses.poll(Server.RESPONSE_TIMEOUT_MS, TimeUnit.MILLISECONDS);
 		}
 
@@ -603,7 +604,7 @@ public class Server implements P2PService {
 
 		@Override
 		public void messageReceived(ChannelHandlerContext ctx, MessageEvent e) throws Exception {
-			responses.offer((Message) e.getMessage());
+			responses.offer((Frame) e.getMessage());
 		}
 
 		@Override
@@ -618,35 +619,37 @@ public class Server implements P2PService {
 
 		@Override
 		public void messageReceived(ChannelHandlerContext ctx, MessageEvent e) throws Exception {
-			Message req = (Message) e.getMessage();
+			Frame frame = (Frame) e.getMessage();
+
+			Message req = frame.getMessage();
 			Contact src = Util.toContact(req.getNodeId(), req.getAddress(), req.getPort());
 
-			onMessageReceived(src, req);
+			onMessageReceived(src, frame);
 
-			Message rsp;
+			Frame rsp;
 
 			// Processing messages
 			switch (req.getType()) {
 			case REQ_PING:
-				rsp = processPing(src, req);
+				rsp = processPing(src, frame);
 				break;
 			case REQ_STORE:
-				rsp = processStore(src, req);
+				rsp = processStore(src, frame);
 				break;
 			case REQ_FIND_NODE:
-				rsp = processFindNode(src, req);
+				rsp = processFindNode(src, frame);
 				break;
 			case REQ_FIND_VALUE:
-				rsp = processFindValue(src, req);
+				rsp = processFindValue(src, frame);
 				break;
 			case RSP_SUCCESS:
-				processSuccess(req);
+				processSuccess(frame);
 				return;
 			case RSP_IO_ERROR:
-				processIOError(req);
+				processIOError(frame);
 				return;
 			default:
-				unsupportedMessage(src, req);
+				unsupportedMessage(src, frame);
 				return;
 			}
 
@@ -669,15 +672,15 @@ public class Server implements P2PService {
 	}
 
 	// Future wrapper for sending messages with ChannelFutures
-	private static class MessageFuture implements Future<Message> {
+	private static class MessageFuture implements Future<Frame> {
 
 		private final ChannelFuture future;
-		private final Message message;
+		private final Frame frame;
 		private final InetSocketAddress address;
 
-		public MessageFuture(ChannelFuture future, Message message, InetSocketAddress address) {
+		public MessageFuture(ChannelFuture future, Frame frame, InetSocketAddress address) {
 			this.future = future;
-			this.message = message;
+			this.frame = frame;
 			this.address = address;
 		}
 
@@ -697,7 +700,7 @@ public class Server implements P2PService {
 		}
 
 		@Override
-		public Message get() throws InterruptedException, ExecutionException {
+		public Frame get() throws InterruptedException, ExecutionException {
 			try {
 				return get(RESPONSE_TIMEOUT_MS, TimeUnit.MILLISECONDS);
 			} catch (TimeoutException e) {
@@ -706,10 +709,10 @@ public class Server implements P2PService {
 		}
 
 		@Override
-		public Message get(long timeout, TimeUnit unit) throws InterruptedException, TimeoutException {
+		public Frame get(long timeout, TimeUnit unit) throws InterruptedException, TimeoutException {
 
 			if (!future.await(timeout, unit)) {
-				throw new TimeoutException(message.getType() + " to " + address + " has timed out in "
+				throw new TimeoutException(frame.getType() + " to " + address + " has timed out in "
 						+ RESPONSE_TIMEOUT_MS + " milliseconds");
 			}
 
@@ -717,9 +720,9 @@ public class Server implements P2PService {
 
 			try {
 				ClientHandler handler = channel.getPipeline().get(ClientHandler.class);
-				Message rsp = handler.sendMessage(message);
+				Frame rsp = handler.sendMessage(frame);
 				if (rsp == null) {
-					throw new TimeoutException(message.getType() + " to " + address + " has timed out");
+					throw new TimeoutException(frame.getType() + " to " + address + " has timed out");
 				}
 				return rsp;
 			} finally {

@@ -26,6 +26,5 @@ message Message {
 	required MessageType type = 5;
 	
 	optional bytes key = 6;
-	optional bytes data = 7;
-	repeated Node nodes = 8;
+	repeated Node nodes = 7;
 }

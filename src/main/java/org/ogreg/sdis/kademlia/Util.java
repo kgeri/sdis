@@ -9,6 +9,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Comparator;
 import java.util.Random;
 
+import org.jboss.netty.buffer.ChannelBuffer;
 import org.ogreg.sdis.kademlia.Protocol.Message;
 import org.ogreg.sdis.kademlia.Protocol.Message.Builder;
 import org.ogreg.sdis.kademlia.Protocol.MessageType;
@@ -79,38 +80,31 @@ class Util {
 	}
 
 	/**
-	 * @param msg
+	 * @param frame
 	 *            the message
 	 * 
 	 * @return the data from the message.
 	 * @throws IllegalArgumentException
 	 *             if the data is not set
 	 */
-	public static ByteString ensureHasData(Message msg) {
-		if (msg.hasData()) {
-			return msg.getData();
+	public static ChannelBuffer ensureHasData(Frame frame) {
+		if (frame.hasData()) {
+			return frame.getData();
 		} else {
-			throw new IllegalArgumentException("Malformed " + msg.getType() + " message: data not set");
+			throw new IllegalArgumentException("Malformed " + frame.getMessage().getType() + " message: data not set");
 		}
 	}
 
 	/**
 	 * Generates the SHA-1 checksum from the given <code>data</code>.
-	 * 
-	 * @param data
-	 * @return
-	 */
-	public static BinaryKey checksum(ByteString data) {
-		return checksum(data.asReadOnlyByteBuffer());
-	}
-
-	/**
-	 * Generates the SHA-1 checksum from the given <code>data</code>.
+	 * <p>
+	 * This operation should have no effect on the input buffer at all.
 	 * 
 	 * @param data
 	 * @return
 	 */
 	public static BinaryKey checksum(ByteBuffer data) {
+		data = data.asReadOnlyBuffer();
 		MessageDigest digest = SHA1Digests.get();
 		if (digest == null) {
 			digest = createSHA1Digest();

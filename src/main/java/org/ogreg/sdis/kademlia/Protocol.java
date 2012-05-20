@@ -598,11 +598,7 @@ public final class Protocol {
     boolean hasKey();
     com.google.protobuf.ByteString getKey();
     
-    // optional bytes data = 7;
-    boolean hasData();
-    com.google.protobuf.ByteString getData();
-    
-    // repeated .org.ogreg.sdis.kademlia.Node nodes = 8;
+    // repeated .org.ogreg.sdis.kademlia.Node nodes = 7;
     java.util.List<org.ogreg.sdis.kademlia.Protocol.Node> 
         getNodesList();
     org.ogreg.sdis.kademlia.Protocol.Node getNodes(int index);
@@ -701,18 +697,8 @@ public final class Protocol {
       return key_;
     }
     
-    // optional bytes data = 7;
-    public static final int DATA_FIELD_NUMBER = 7;
-    private com.google.protobuf.ByteString data_;
-    public boolean hasData() {
-      return ((bitField0_ & 0x00000040) == 0x00000040);
-    }
-    public com.google.protobuf.ByteString getData() {
-      return data_;
-    }
-    
-    // repeated .org.ogreg.sdis.kademlia.Node nodes = 8;
-    public static final int NODES_FIELD_NUMBER = 8;
+    // repeated .org.ogreg.sdis.kademlia.Node nodes = 7;
+    public static final int NODES_FIELD_NUMBER = 7;
     private java.util.List<org.ogreg.sdis.kademlia.Protocol.Node> nodes_;
     public java.util.List<org.ogreg.sdis.kademlia.Protocol.Node> getNodesList() {
       return nodes_;
@@ -739,7 +725,6 @@ public final class Protocol {
       rpcId_ = com.google.protobuf.ByteString.EMPTY;
       type_ = org.ogreg.sdis.kademlia.Protocol.MessageType.REQ_PING;
       key_ = com.google.protobuf.ByteString.EMPTY;
-      data_ = com.google.protobuf.ByteString.EMPTY;
       nodes_ = java.util.Collections.emptyList();
     }
     private byte memoizedIsInitialized = -1;
@@ -798,11 +783,8 @@ public final class Protocol {
       if (((bitField0_ & 0x00000020) == 0x00000020)) {
         output.writeBytes(6, key_);
       }
-      if (((bitField0_ & 0x00000040) == 0x00000040)) {
-        output.writeBytes(7, data_);
-      }
       for (int i = 0; i < nodes_.size(); i++) {
-        output.writeMessage(8, nodes_.get(i));
+        output.writeMessage(7, nodes_.get(i));
       }
       getUnknownFields().writeTo(output);
     }
@@ -837,13 +819,9 @@ public final class Protocol {
         size += com.google.protobuf.CodedOutputStream
           .computeBytesSize(6, key_);
       }
-      if (((bitField0_ & 0x00000040) == 0x00000040)) {
-        size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(7, data_);
-      }
       for (int i = 0; i < nodes_.size(); i++) {
         size += com.google.protobuf.CodedOutputStream
-          .computeMessageSize(8, nodes_.get(i));
+          .computeMessageSize(7, nodes_.get(i));
       }
       size += getUnknownFields().getSerializedSize();
       memoizedSerializedSize = size;
@@ -982,11 +960,9 @@ public final class Protocol {
         bitField0_ = (bitField0_ & ~0x00000010);
         key_ = com.google.protobuf.ByteString.EMPTY;
         bitField0_ = (bitField0_ & ~0x00000020);
-        data_ = com.google.protobuf.ByteString.EMPTY;
-        bitField0_ = (bitField0_ & ~0x00000040);
         if (nodesBuilder_ == null) {
           nodes_ = java.util.Collections.emptyList();
-          bitField0_ = (bitField0_ & ~0x00000080);
+          bitField0_ = (bitField0_ & ~0x00000040);
         } else {
           nodesBuilder_.clear();
         }
@@ -1052,14 +1028,10 @@ public final class Protocol {
           to_bitField0_ |= 0x00000020;
         }
         result.key_ = key_;
-        if (((from_bitField0_ & 0x00000040) == 0x00000040)) {
-          to_bitField0_ |= 0x00000040;
-        }
-        result.data_ = data_;
         if (nodesBuilder_ == null) {
-          if (((bitField0_ & 0x00000080) == 0x00000080)) {
+          if (((bitField0_ & 0x00000040) == 0x00000040)) {
             nodes_ = java.util.Collections.unmodifiableList(nodes_);
-            bitField0_ = (bitField0_ & ~0x00000080);
+            bitField0_ = (bitField0_ & ~0x00000040);
           }
           result.nodes_ = nodes_;
         } else {
@@ -1099,14 +1071,11 @@ public final class Protocol {
         if (other.hasKey()) {
           setKey(other.getKey());
         }
-        if (other.hasData()) {
-          setData(other.getData());
-        }
         if (nodesBuilder_ == null) {
           if (!other.nodes_.isEmpty()) {
             if (nodes_.isEmpty()) {
               nodes_ = other.nodes_;
-              bitField0_ = (bitField0_ & ~0x00000080);
+              bitField0_ = (bitField0_ & ~0x00000040);
             } else {
               ensureNodesIsMutable();
               nodes_.addAll(other.nodes_);
@@ -1119,7 +1088,7 @@ public final class Protocol {
               nodesBuilder_.dispose();
               nodesBuilder_ = null;
               nodes_ = other.nodes_;
-              bitField0_ = (bitField0_ & ~0x00000080);
+              bitField0_ = (bitField0_ & ~0x00000040);
               nodesBuilder_ = 
                 com.google.protobuf.GeneratedMessage.alwaysUseFieldBuilders ?
                    getNodesFieldBuilder() : null;
@@ -1222,11 +1191,6 @@ public final class Protocol {
               break;
             }
             case 58: {
-              bitField0_ |= 0x00000040;
-              data_ = input.readBytes();
-              break;
-            }
-            case 66: {
               org.ogreg.sdis.kademlia.Protocol.Node.Builder subBuilder = org.ogreg.sdis.kademlia.Protocol.Node.newBuilder();
               input.readMessage(subBuilder, extensionRegistry);
               addNodes(subBuilder.buildPartial());
@@ -1379,37 +1343,13 @@ public final class Protocol {
         return this;
       }
       
-      // optional bytes data = 7;
-      private com.google.protobuf.ByteString data_ = com.google.protobuf.ByteString.EMPTY;
-      public boolean hasData() {
-        return ((bitField0_ & 0x00000040) == 0x00000040);
-      }
-      public com.google.protobuf.ByteString getData() {
-        return data_;
-      }
-      public Builder setData(com.google.protobuf.ByteString value) {
-        if (value == null) {
-    throw new NullPointerException();
-  }
-  bitField0_ |= 0x00000040;
-        data_ = value;
-        onChanged();
-        return this;
-      }
-      public Builder clearData() {
-        bitField0_ = (bitField0_ & ~0x00000040);
-        data_ = getDefaultInstance().getData();
-        onChanged();
-        return this;
-      }
-      
-      // repeated .org.ogreg.sdis.kademlia.Node nodes = 8;
+      // repeated .org.ogreg.sdis.kademlia.Node nodes = 7;
       private java.util.List<org.ogreg.sdis.kademlia.Protocol.Node> nodes_ =
         java.util.Collections.emptyList();
       private void ensureNodesIsMutable() {
-        if (!((bitField0_ & 0x00000080) == 0x00000080)) {
+        if (!((bitField0_ & 0x00000040) == 0x00000040)) {
           nodes_ = new java.util.ArrayList<org.ogreg.sdis.kademlia.Protocol.Node>(nodes_);
-          bitField0_ |= 0x00000080;
+          bitField0_ |= 0x00000040;
          }
       }
       
@@ -1525,7 +1465,7 @@ public final class Protocol {
       public Builder clearNodes() {
         if (nodesBuilder_ == null) {
           nodes_ = java.util.Collections.emptyList();
-          bitField0_ = (bitField0_ & ~0x00000080);
+          bitField0_ = (bitField0_ & ~0x00000040);
           onChanged();
         } else {
           nodesBuilder_.clear();
@@ -1581,7 +1521,7 @@ public final class Protocol {
           nodesBuilder_ = new com.google.protobuf.RepeatedFieldBuilder<
               org.ogreg.sdis.kademlia.Protocol.Node, org.ogreg.sdis.kademlia.Protocol.Node.Builder, org.ogreg.sdis.kademlia.Protocol.NodeOrBuilder>(
                   nodes_,
-                  ((bitField0_ & 0x00000080) == 0x00000080),
+                  ((bitField0_ & 0x00000040) == 0x00000040),
                   getParentForChildren(),
                   isClean());
           nodes_ = null;
@@ -1621,16 +1561,15 @@ public final class Protocol {
     java.lang.String[] descriptorData = {
       "\n src/main/protobuf/kademlia.proto\022\027org." +
       "ogreg.sdis.kademlia\"5\n\004Node\022\016\n\006nodeId\030\001 " +
-      "\002(\014\022\017\n\007address\030\002 \002(\014\022\014\n\004port\030\003 \002(\r\"\304\001\n\007M" +
+      "\002(\014\022\017\n\007address\030\002 \002(\014\022\014\n\004port\030\003 \002(\r\"\266\001\n\007M" +
       "essage\022\016\n\006nodeId\030\001 \002(\014\022\017\n\007address\030\002 \002(\014\022" +
       "\014\n\004port\030\003 \002(\r\022\r\n\005rpcId\030\004 \002(\014\0222\n\004type\030\005 \002" +
       "(\0162$.org.ogreg.sdis.kademlia.MessageType" +
-      "\022\013\n\003key\030\006 \001(\014\022\014\n\004data\030\007 \001(\014\022,\n\005nodes\030\010 \003" +
-      "(\0132\035.org.ogreg.sdis.kademlia.Node*t\n\013Mes" +
-      "sageType\022\014\n\010REQ_PING\020\000\022\r\n\tREQ_STORE\020\001\022\021\n" +
-      "\rREQ_FIND_NODE\020\002\022\022\n\016REQ_FIND_VALUE\020\003\022\017\n\013",
-      "RSP_SUCCESS\020\n\022\020\n\014RSP_IO_ERROR\020\013B\nB\010Proto" +
-      "col"
+      "\022\013\n\003key\030\006 \001(\014\022,\n\005nodes\030\007 \003(\0132\035.org.ogreg" +
+      ".sdis.kademlia.Node*t\n\013MessageType\022\014\n\010RE" +
+      "Q_PING\020\000\022\r\n\tREQ_STORE\020\001\022\021\n\rREQ_FIND_NODE" +
+      "\020\002\022\022\n\016REQ_FIND_VALUE\020\003\022\017\n\013RSP_SUCCESS\020\n\022",
+      "\020\n\014RSP_IO_ERROR\020\013B\nB\010Protocol"
     };
     com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner assigner =
       new com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner() {
@@ -1650,7 +1589,7 @@ public final class Protocol {
           internal_static_org_ogreg_sdis_kademlia_Message_fieldAccessorTable = new
             com.google.protobuf.GeneratedMessage.FieldAccessorTable(
               internal_static_org_ogreg_sdis_kademlia_Message_descriptor,
-              new java.lang.String[] { "NodeId", "Address", "Port", "RpcId", "Type", "Key", "Data", "Nodes", },
+              new java.lang.String[] { "NodeId", "Address", "Port", "RpcId", "Type", "Key", "Nodes", },
               org.ogreg.sdis.kademlia.Protocol.Message.class,
               org.ogreg.sdis.kademlia.Protocol.Message.Builder.class);
           return null;
