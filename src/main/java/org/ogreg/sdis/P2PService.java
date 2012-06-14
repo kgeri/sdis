@@ -3,6 +3,8 @@ package org.ogreg.sdis;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 
+import org.ogreg.sdis.model.BinaryKey;
+
 /**
  * Contract for services which provide access to a Peer-to-Peer network.
  * 
@@ -19,7 +21,7 @@ public interface P2PService {
 	 * @param address
 	 */
 	void contact(InetSocketAddress address);
-	
+
 	/**
 	 * Stores the specified data chunk in the P2P network.
 	 * <p>
@@ -27,6 +29,17 @@ public interface P2PService {
 	 * modified (limit, position).
 	 * 
 	 * @param data
+	 *            The data to store
+	 * @return The key on which this data chunk was stored.
 	 */
-	void store(ByteBuffer data);
+	BinaryKey store(ByteBuffer data);
+
+	/**
+	 * Loads data with the specified key from the P2P network.
+	 * 
+	 * @param key
+	 *            The key to search for
+	 * @return A buffer positioned to the requested data, or null if the data was not found.
+	 */
+	ByteBuffer load(BinaryKey key);
 }

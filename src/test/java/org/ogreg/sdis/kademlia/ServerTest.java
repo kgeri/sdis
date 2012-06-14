@@ -7,14 +7,18 @@ import static org.ogreg.sdis.kademlia.Protocol.MessageType.RSP_SUCCESS;
 import static org.ogreg.sdis.kademlia.Util.message;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
 
 import java.nio.ByteBuffer;
+import java.util.List;
 
 import org.jboss.netty.buffer.ChannelBuffers;
+import org.jboss.netty.channel.ChannelException;
 import org.ogreg.sdis.CommonUtil;
 import org.ogreg.sdis.P2PService;
 import org.ogreg.sdis.model.BinaryKey;
 import org.ogreg.sdis.storage.InMemoryStorageServiceImpl;
+import org.ogreg.sdis.util.Properties;
 import org.testng.annotations.AfterTest;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
@@ -29,6 +33,7 @@ import com.google.protobuf.ByteString;
 @Test(groups = "functional")
 public class ServerTest {
 
+	private Properties properties;
 	private Server alice;
 	private Server bob;
 	private Server charlie;
@@ -39,16 +44,19 @@ public class ServerTest {
 
 	@BeforeTest
 	public void setUp() {
+		properties = new Properties();
+		properties.put("maxContacts", 2); // Note: k = 2!
+
 		aliceStore = new InMemoryStorageServiceImpl();
-		alice = new Server(aliceStore, key(0, 0, 0, 0, 1));
+		alice = new Server(aliceStore, key(0, 0, 0, 0, 1), properties);
 		alice.setPortRange(6000, 6100);
 
 		bobStore = new InMemoryStorageServiceImpl();
-		bob = new Server(bobStore, key(0, 0, 0, 0, 2));
+		bob = new Server(bobStore, key(0, 0, 0, 0, 2), properties);
 		bob.setPortRange(6000, 6100);
 
 		charlieStore = new InMemoryStorageServiceImpl();
-		charlie = new Server(charlieStore, key(0, 0, 0, 0, 3));
+		charlie = new Server(charlieStore, key(0, 0, 0, 0, 3), properties);
 		charlie.setPortRange(6000, 6100);
 
 		alice.start();
@@ -124,12 +132,59 @@ public class ServerTest {
 		alice.store(data);
 
 		// Because of iterativeFindNode, Alice will eventually get know of Charlie
-		// Since k is 20, it will be stored on all peers
+		// Since k is 2, it will be stored both on Bob and Charlie
 		assertEquals(bobStore.load(dataKey), data);
 		assertEquals(charlieStore.load(dataKey), data);
 
 		// But not on Alice
 		assertNull(aliceStore.load(dataKey));
+	}
+
+	/**
+	 * Ensures that a STOREd content can be retrieved from the network - testing the iterativeFindValue cycle.
+	 */
+	public void testLoad() throws Exception {
+		alice.contact(bob.getAddress());
+		bob.contact(charlie.getAddress());
+
+		ByteBuffer data = data(4096);
+		BinaryKey dataKey = Util.checksum(data);
+
+		charlieStore.store(dataKey, data);
+
+		assertEquals(alice.load(dataKey), data);
+
+		// The data should not be on Bob, he was just an intermediary
+		assertNull(bobStore.load(dataKey));
+
+		// And now Alice should know Charlie
+		assertKnows(alice, charlie);
+	}
+
+	/**
+	 * Tests what happens if the starting port is already bound. Tests what happens if no port is free.
+	 */
+	@Test(expectedExceptions = ChannelException.class)
+	public void testBindError() throws Exception {
+		Server dave = new Server(new InMemoryStorageServiceImpl(), key(0, 0, 0, 0, 1), properties);
+		dave.setPortRange(alice.getAddress().getPort(), bob.getAddress().getPort());
+		dave.start();
+	}
+
+	/**
+	 * Ensures that calling start() twice results in an error.
+	 */
+	@Test(expectedExceptions = IllegalStateException.class)
+	public void testRestartError() throws Exception {
+		alice.start();
+	}
+
+	/**
+	 * Ensures that calling stop() if the service is not running, has no effect.
+	 */
+	public void testReStopNoError() {
+		Server dave = new Server(new InMemoryStorageServiceImpl(), key(0, 0, 0, 0, 1), properties);
+		dave.stop();
 	}
 
 	BinaryKey key(int... value) {
@@ -150,5 +205,11 @@ public class ServerTest {
 
 	void assertBSEquals(ByteString actual, ByteString expected) {
 		assertEquals(CommonUtil.toHexString(actual.toByteArray()), CommonUtil.toHexString(expected.toByteArray()));
+	}
+
+	void assertKnows(Server server1, Server server2) {
+		BinaryKey server2Key = new BinaryKey(server2.getNodeId().toByteArray());
+		List<Contact> contacts = server1.getRoutingTable().getClosestTo(server2Key, 100);
+		assertTrue(contacts.contains(new Contact(server2Key, server2.getAddress())));
 	}
 }

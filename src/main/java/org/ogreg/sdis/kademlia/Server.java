@@ -1,6 +1,7 @@
 package org.ogreg.sdis.kademlia;
 
 import static org.ogreg.sdis.kademlia.Protocol.MessageType.REQ_FIND_NODE;
+import static org.ogreg.sdis.kademlia.Protocol.MessageType.REQ_FIND_VALUE;
 import static org.ogreg.sdis.kademlia.Protocol.MessageType.REQ_PING;
 import static org.ogreg.sdis.kademlia.Protocol.MessageType.REQ_STORE;
 import static org.ogreg.sdis.kademlia.Protocol.MessageType.RSP_IO_ERROR;
@@ -52,8 +53,10 @@ import org.ogreg.sdis.kademlia.Protocol.MessageType;
 import org.ogreg.sdis.kademlia.Protocol.Node;
 import org.ogreg.sdis.kademlia.Util.ContactWithDistance;
 import org.ogreg.sdis.model.BinaryKey;
+import org.ogreg.sdis.util.Properties;
 import org.ogreg.sdis.util.ProtobufFrameDecoder;
 import org.ogreg.sdis.util.ProtobufFrameEncoder;
+import org.ogreg.sdis.util.ShutdownException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -71,22 +74,22 @@ public class Server implements P2PService {
 	/**
 	 * The number of milliseconds to wait before a {@link MessageType#REQ_PING} times out.
 	 */
-	private static final int RESPONSE_TIMEOUT_MS = 10000;
+	private final int responseTimeOutMs;
 
 	/**
 	 * The number of milliseconds to wait before a connection close attempt times out.
 	 */
-	private static final int CLOSE_TIMEOUT_MS = 3000;
+	private final int closeTimeOutMs;
 
 	/**
 	 * The maximum number of contacts stored in a k-bucket (k).
 	 */
-	private static final int MAX_CONTACTS = 20;
+	private final int maxContacts;
 
 	/**
 	 * The degree of parallelism in network calls (alpha).
 	 */
-	private static final int MAX_PARALLELISM = 3;
+	private final int maxParallelism;
 
 	/**
 	 * The first port on which the server tries to listen (inclusive).
@@ -123,10 +126,16 @@ public class Server implements P2PService {
 
 	private ReplaceAction updateAction;
 
-	public Server(StorageService store, BinaryKey nodeId) {
+	public Server(StorageService store, BinaryKey nodeId, Properties properties) {
+		// Processing properties
+		this.responseTimeOutMs = properties.get("responseTimeoutMs", 10000, Integer.class);
+		this.closeTimeOutMs = properties.get("closeTimeOutMs", 3000, Integer.class);
+		this.maxContacts = properties.get("maxContacts", 20, Integer.class);
+		this.maxParallelism = properties.get("maxParallelism", 3, Integer.class);
+
 		this.store = store;
 		this.nodeId = ByteString.copyFrom(nodeId.toByteArray());
-		this.routingTable = new RoutingTableFixedImpl(nodeId, MAX_CONTACTS);
+		this.routingTable = new RoutingTableFixedImpl(nodeId, maxContacts);
 		this.serverExecutor = Executors.newCachedThreadPool();
 
 		// Update action: if the appropriate k-bucket is full, then the recipient pings the k-bucket’s least-recently
@@ -134,13 +143,16 @@ public class Server implements P2PService {
 		updateAction = new ReplaceAction() {
 			@Override
 			public Contact replace(Contact leastRecent, Contact newContact) {
-				if (sendPingSync(leastRecent.address)) {
-					// If the least-recently seen node responds, the new contact is discarded
-					return leastRecent;
-				} else {
-					// If the least-recently seen node fails to respond, the new contact is added
-					return newContact;
+				boolean response = false;
+				try {
+					response = sendPingSync(leastRecent.address);
+				} catch (TimeoutException e) {
+					log.debug("Ping timed out for: {}", leastRecent);
 				}
+
+				// If the least-recently seen node responds, the new contact is discarded
+				// If the least-recently seen node fails to respond, the new contact is added
+				return response ? leastRecent : newContact;
 			}
 		};
 	}
@@ -223,24 +235,16 @@ public class Server implements P2PService {
 		try {
 			// TODO Async pinging
 			Frame req = new Frame(message(REQ_PING, nodeId, this.address).build());
-			Frame rsp = sendMessageSync(req, address);
-			Message msg = rsp.getMessage();
-			if (msg.getType().equals(RSP_SUCCESS)) {
-				// TODO This should be done only in the server handler, as we should use async conversation states
-				Contact contact = Util.toContact(msg.getNodeId(), msg.getAddress(), msg.getPort());
-				onMessageReceived(contact, rsp);
-			}
+			sendMessageSync(req, address);
 			// TODO Direct errors to GUI
 		} catch (TimeoutException e) {
-			log.debug("{}", e.getLocalizedMessage());
-		} catch (InterruptedException e) {
-			log.debug("{} was interrupted", REQ_PING);
+			log.debug("Contact timed out for: {}", address);
 		}
 	}
 
 	// Does an iterativeStore in the Kademlia network
 	@Override
-	public void store(ByteBuffer data) {
+	public BinaryKey store(ByteBuffer data) {
 		// Note: if you change this, make sure data is not modified, neither directly, nor by any side-effect
 		BinaryKey key = Util.checksum(data);
 
@@ -258,32 +262,108 @@ public class Server implements P2PService {
 			} catch (TimeoutException e) {
 				log.debug("Store timed out for: {}", contact);
 				continue;
-			} catch (InterruptedException e) {
-				log.warn("Store was interrupted for: {}", contact);
-				break;
 			}
 		}
+
+		return key;
+	}
+
+	@Override
+	public ByteBuffer load(BinaryKey key) {
+		ChannelBuffer buffer = iterativeFindValue(key);
+		// TODO Make sure that this does not copy the contents
+		return buffer == null ? null : buffer.toByteBuffer();
 	}
 
 	/**
-	 * Does an iterativeFindNode for the specified key and returns at most {@link #MAX_CONTACTS} closest contacts.
+	 * Does an iterativeFindNode for the specified key and returns at most {@link #maxContacts} closest contacts.
 	 * 
 	 * @param key
+	 * @param operation
+	 *            the type of the operation to do iteratively - either REQ_FIND_NODE, or REQ_FIND_VALUE
 	 */
 	private List<Contact> iterativeFindNode(BinaryKey key) {
-		List<Contact> results = new ArrayList<Contact>(MAX_CONTACTS);
+		final List<Contact> results = new ArrayList<Contact>(maxContacts);
+		iterativeFind(key, new IterativeFindCallback() {
+			@Override
+			public Message getRequest(ByteString key) {
+				return message(REQ_FIND_NODE, nodeId, Server.this.address).setKey(key).build();
+			}
 
-		Queue<ContactWithDistance> queue = new PriorityQueue<ContactWithDistance>(MAX_CONTACTS,
+			@Override
+			protected boolean onSuccess(Contact contact, Frame response) {
+				results.add(contact);
+				// We stop if we have k successfully probed contacts
+				return results.size() >= maxContacts;
+			}
+		});
+		return results;
+	}
+
+	/**
+	 * Does an iterativeFindNode for the specified key and returns at most {@link #maxContacts} closest contacts.
+	 * 
+	 * @param key
+	 * @return the data chunk for the searched key, or null if not found
+	 */
+	private ChannelBuffer iterativeFindValue(final BinaryKey key) {
+		final ChannelBuffer[] result = new ChannelBuffer[1];
+		iterativeFind(key, new IterativeFindCallback() {
+			@Override
+			public Message getRequest(ByteString key) {
+				return message(REQ_FIND_VALUE, nodeId, Server.this.address).setKey(key).build();
+			}
+
+			@Override
+			protected boolean onSuccess(Contact contact, Frame response) {
+				if (!response.hasData()) {
+					log.debug("Contact responded SUCCESS but no data to a FIND_VALUE: {}", contact);
+					return false;
+				}
+
+				ChannelBuffer data = response.getData();
+
+				// TODO Make sure that this does not copy the contents
+				ByteBuffer buffer = data.toByteBuffer();
+				BinaryKey computedKey = Util.checksum(buffer);
+
+				if (!computedKey.equals(key)) {
+					// Either someone was nasty, or there was a transfer error
+					log.error("Data chunk cheksum mismatch (" + key + " != " + computedKey + ")");
+					return false;
+				}
+
+				// We stop if we found the result
+				result[0] = data;
+				return true;
+			}
+		});
+		return result[0];
+	}
+
+	/**
+	 * Executes an iterativeFind operation.
+	 * <p>
+	 * This iteratively queries nodes of the network, and searches for a value or more nodes, depending on the callback
+	 * implementation.
+	 * 
+	 * @param key
+	 * @param callback
+	 */
+	private void iterativeFind(BinaryKey key, IterativeFindCallback callback) {
+		Queue<ContactWithDistance> queue = new PriorityQueue<ContactWithDistance>(maxContacts,
 				Util.ContactDistanceComparator);
-		Set<Contact> seen = new HashSet<Contact>(MAX_CONTACTS * 2);
+		Set<Contact> seen = new HashSet<Contact>(maxContacts * 2);
 
 		// Initially the queue is filled using the routing table
-		for (Contact contact : routingTable.getClosestTo(key, MAX_PARALLELISM)) {
+		for (Contact contact : routingTable.getClosestTo(key, maxParallelism)) {
 			queue.add(new ContactWithDistance(contact, Util.distanceOf(key, contact.nodeId)));
 		}
 
 		ByteString keyBS = ByteString.copyFrom(key.toByteArray());
-		Message message = message(REQ_FIND_NODE, nodeId, this.address).setKey(keyBS).build();
+
+		// This will either be a REQ_FIND_NODE, or a REQ_FIND_VALUE
+		Message message = callback.getRequest(keyBS);
 		Frame frame = new Frame(message);
 
 		// TODO Time-limited operation (?)
@@ -305,17 +385,12 @@ public class Server implements P2PService {
 			} catch (TimeoutException e) {
 				log.debug("FindNode timed out for: {}", contact);
 				continue;
-			} catch (InterruptedException e) {
-				log.warn("FindNode was interrupted for: {}", contact);
-				break;
 			}
 
 			Message msg = rsp.getMessage();
-			if (msg.getType().equals(RSP_SUCCESS) && msg.getNodesCount() > 0) {
-				results.add(contact);
+			if (msg.getType() == RSP_SUCCESS) {
 
-				// We stop if we have k successfully probed contacts
-				if (results.size() >= MAX_CONTACTS) {
+				if (callback.onSuccess(contact, rsp)) {
 					break;
 				}
 
@@ -326,8 +401,16 @@ public class Server implements P2PService {
 				}
 			}
 		}
+	}
 
-		return results;
+	// Callback interface for various iterativeFind implementations
+	private abstract static class IterativeFindCallback {
+
+		// The implementation returns the request used for the iterative find here
+		public abstract Message getRequest(ByteString key);
+
+		// The implementation returns true if all the results were found
+		protected abstract boolean onSuccess(Contact contact, Frame response);
 	}
 
 	/**
@@ -341,14 +424,19 @@ public class Server implements P2PService {
 		this.portTo = Math.max(from, to);
 	}
 
-	// The bound server address, or null if the server is not bound.
+	// The bound server address, or null if the server is not bound, for testing
 	InetSocketAddress getAddress() {
 		return address;
 	}
 
-	// The nodeId of this server.
+	// The nodeId of this server, for testing
 	ByteString getNodeId() {
 		return nodeId;
+	}
+
+	// The routing table, for testing
+	RoutingTable getRoutingTable() {
+		return routingTable;
 	}
 
 	/**
@@ -357,19 +445,14 @@ public class Server implements P2PService {
 	 * @param address
 	 * 
 	 * @return true if the remote node responded successfully
+	 * @throws TimeoutException
+	 *             if the request has timed out
 	 */
-	private boolean sendPingSync(InetSocketAddress address) {
+	private boolean sendPingSync(InetSocketAddress address) throws TimeoutException {
 		Message message = message(REQ_PING, nodeId, this.address).build();
 		Frame frame = new Frame(message);
-		try {
-			Frame response = sendMessageSync(frame, address);
-			return response.getMessage().getType().equals(RSP_SUCCESS);
-		} catch (TimeoutException e) {
-			log.debug("{}", e.getLocalizedMessage());
-		} catch (InterruptedException e) {
-			log.debug("{} was interrupted", REQ_PING);
-		}
-		return false;
+		Frame response = sendMessageSync(frame, address);
+		return response.getMessage().getType().equals(RSP_SUCCESS);
 	}
 
 	private void onMessageReceived(Contact contact, Frame frame) {
@@ -401,14 +484,19 @@ public class Server implements P2PService {
 	 * @return The response received
 	 * @throws TimeoutException
 	 *             if the request has timed out
-	 * @throws InterruptedException
-	 *             if the request was interrupted
 	 */
 	// Package private for unit testing
-	Frame sendMessageSync(Frame frame, InetSocketAddress address) throws TimeoutException, InterruptedException {
+	Frame sendMessageSync(Frame frame, InetSocketAddress address) throws TimeoutException {
 		log.debug("Sending {} from {} to {}", new Object[] { frame.getType(), this.address, address });
 		ChannelFuture channelFuture = client.connect(address);
-		return new MessageFuture(channelFuture, frame, address).get(RESPONSE_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+		Frame rsp = new MessageFuture(channelFuture, frame, address).get(responseTimeOutMs, TimeUnit.MILLISECONDS);
+		Message msg = rsp.getMessage();
+		if (msg.getType().equals(RSP_SUCCESS)) {
+			// TODO This should be done only in the server handler, as we should use async conversation states
+			Contact contact = Util.toContact(msg.getNodeId(), msg.getAddress(), msg.getPort());
+			onMessageReceived(contact, rsp);
+		}
+		return rsp;
 	}
 
 	/**
@@ -490,7 +578,7 @@ public class Server implements P2PService {
 		BinaryKey key = Util.ensureHasKey(request.getMessage());
 		Builder builder = message(RSP_SUCCESS, this.nodeId, this.address);
 
-		Collection<Contact> closestContacts = routingTable.getClosestTo(key, MAX_CONTACTS);
+		Collection<Contact> closestContacts = routingTable.getClosestTo(key, maxContacts);
 		for (Contact c : closestContacts) {
 
 			// The recipient of a FIND_NODE should never return a triple containing the nodeID of the requestor
@@ -592,7 +680,7 @@ public class Server implements P2PService {
 		 */
 		public Frame sendMessage(Frame frame) throws InterruptedException {
 			channel.write(frame);
-			return responses.poll(Server.RESPONSE_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+			return responses.poll(responseTimeOutMs, TimeUnit.MILLISECONDS);
 		}
 
 		@Override
@@ -672,7 +760,7 @@ public class Server implements P2PService {
 	}
 
 	// Future wrapper for sending messages with ChannelFutures
-	private static class MessageFuture implements Future<Frame> {
+	private class MessageFuture implements Future<Frame> {
 
 		private final ChannelFuture future;
 		private final Frame frame;
@@ -702,31 +790,35 @@ public class Server implements P2PService {
 		@Override
 		public Frame get() throws InterruptedException, ExecutionException {
 			try {
-				return get(RESPONSE_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+				return get(responseTimeOutMs, TimeUnit.MILLISECONDS);
 			} catch (TimeoutException e) {
-				throw new InterruptedException("Wait interrupted by default timeout: " + RESPONSE_TIMEOUT_MS + "ms");
+				throw new ExecutionException("Wait interrupted by default timeout: " + responseTimeOutMs + "ms", e);
 			}
 		}
 
 		@Override
-		public Frame get(long timeout, TimeUnit unit) throws InterruptedException, TimeoutException {
-
-			if (!future.await(timeout, unit)) {
-				throw new TimeoutException(frame.getType() + " to " + address + " has timed out in "
-						+ RESPONSE_TIMEOUT_MS + " milliseconds");
-			}
-
-			Channel channel = future.getChannel();
+		public Frame get(long timeout, TimeUnit unit) throws TimeoutException {
 
 			try {
-				ClientHandler handler = channel.getPipeline().get(ClientHandler.class);
-				Frame rsp = handler.sendMessage(frame);
-				if (rsp == null) {
-					throw new TimeoutException(frame.getType() + " to " + address + " has timed out");
+				if (!future.await(timeout, unit)) {
+					throw new TimeoutException(frame.getType() + " to " + address + " has timed out in "
+							+ responseTimeOutMs + " milliseconds");
 				}
-				return rsp;
-			} finally {
-				channel.close().await(CLOSE_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+
+				Channel channel = future.getChannel();
+
+				try {
+					ClientHandler handler = channel.getPipeline().get(ClientHandler.class);
+					Frame rsp = handler.sendMessage(frame);
+					if (rsp == null) {
+						throw new TimeoutException(frame.getType() + " to " + address + " has timed out");
+					}
+					return rsp;
+				} finally {
+					channel.close().await(closeTimeOutMs, TimeUnit.MILLISECONDS);
+				}
+			} catch (InterruptedException e) {
+				throw new ShutdownException(e);
 			}
 		}
 	}
