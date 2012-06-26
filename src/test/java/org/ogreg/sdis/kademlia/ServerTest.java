@@ -4,16 +4,20 @@ import static org.ogreg.sdis.kademlia.Protocol.MessageType.REQ_FIND_NODE;
 import static org.ogreg.sdis.kademlia.Protocol.MessageType.REQ_PING;
 import static org.ogreg.sdis.kademlia.Protocol.MessageType.REQ_STORE;
 import static org.ogreg.sdis.kademlia.Protocol.MessageType.RSP_SUCCESS;
+import static org.ogreg.sdis.kademlia.Util.generateByteStringId;
 import static org.ogreg.sdis.kademlia.Util.message;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
+import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import org.jboss.netty.buffer.ChannelBuffers;
-import org.jboss.netty.channel.ChannelException;
 import org.ogreg.sdis.CommonUtil;
 import org.ogreg.sdis.P2PService;
 import org.ogreg.sdis.model.BinaryKey;
@@ -23,6 +27,7 @@ import org.testng.annotations.AfterTest;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
+import com.google.common.util.concurrent.Service.State;
 import com.google.protobuf.ByteString;
 
 /**
@@ -75,8 +80,8 @@ public class ServerTest {
 	 * Ensures that a PING message is processed and a RSP_SUCCESS is returned.
 	 */
 	public void testPingMessage() throws Exception {
-		Frame req = new Frame(message(REQ_PING, alice.getNodeId(), alice.getAddress()).build());
-		Frame rsp = alice.sendMessageSync(req, bob.getAddress());
+		Frame req = new Frame(message(REQ_PING, alice.getNodeId(), alice.getAddress(), generateByteStringId()).build());
+		Frame rsp = sendMessageSync(alice, req, bob.getAddress());
 
 		assertEquals(rsp.getMessage().getNodeId(), bob.getNodeId());
 		assertEquals(rsp.getMessage().getType(), RSP_SUCCESS);
@@ -89,11 +94,11 @@ public class ServerTest {
 	 */
 	public void testFindNodeMessage() throws Exception {
 		// Only Bob knows Charlie, Alice will ask Bob
-		bob.contact(charlie.getAddress());
+		contact(bob, charlie);
 
-		Frame req = new Frame(message(REQ_FIND_NODE, alice.getNodeId(), alice.getAddress())
+		Frame req = new Frame(message(REQ_FIND_NODE, alice.getNodeId(), alice.getAddress(), generateByteStringId())
 				.setKey(keyBS(0, 0, 0, 0, 7)).build());
-		Frame rsp = alice.sendMessageSync(req, bob.getAddress());
+		Frame rsp = sendMessageSync(alice, req, bob.getAddress());
 
 		assertEquals(rsp.getMessage().getNodeId(), bob.getNodeId());
 		assertEquals(rsp.getMessage().getType(), RSP_SUCCESS);
@@ -109,9 +114,9 @@ public class ServerTest {
 		BinaryKey dataKey = Util.checksum(data);
 		ByteString dataKeyBS = ByteString.copyFrom(dataKey.toByteArray());
 
-		Frame req = new Frame(message(REQ_STORE, alice.getNodeId(), alice.getAddress()).setKey(dataKeyBS).build(),
-				ChannelBuffers.wrappedBuffer(data));
-		Frame rsp = alice.sendMessageSync(req, bob.getAddress());
+		Frame req = new Frame(message(REQ_STORE, alice.getNodeId(), alice.getAddress(), generateByteStringId()).setKey(
+				dataKeyBS).build(), ChannelBuffers.wrappedBuffer(data));
+		Frame rsp = sendMessageSync(alice, req, bob.getAddress());
 
 		assertEquals(rsp.getMessage().getNodeId(), bob.getNodeId());
 		assertEquals(rsp.getMessage().getType(), RSP_SUCCESS);
@@ -123,13 +128,14 @@ public class ServerTest {
 	 * appropriate nodes.
 	 */
 	public void testStore() throws Exception {
-		alice.contact(bob.getAddress());
-		bob.contact(charlie.getAddress());
+		contact(alice, bob);
+		contact(bob, charlie);
 
 		ByteBuffer data = data(4096);
 		BinaryKey dataKey = Util.checksum(data);
 
 		alice.store(data);
+		Thread.sleep(500); // TODO Get rid of this
 
 		// Because of iterativeFindNode, Alice will eventually get know of Charlie
 		// Since k is 2, it will be stored both on Bob and Charlie
@@ -144,8 +150,8 @@ public class ServerTest {
 	 * Ensures that a STOREd content can be retrieved from the network - testing the iterativeFindValue cycle.
 	 */
 	public void testLoad() throws Exception {
-		alice.contact(bob.getAddress());
-		bob.contact(charlie.getAddress());
+		contact(alice, bob);
+		contact(bob, charlie);
 
 		ByteBuffer data = data(4096);
 		BinaryKey dataKey = Util.checksum(data);
@@ -164,7 +170,7 @@ public class ServerTest {
 	/**
 	 * Tests what happens if the starting port is already bound. Tests what happens if no port is free.
 	 */
-	@Test(expectedExceptions = ChannelException.class)
+	@Test
 	public void testBindError() throws Exception {
 		Server dave = new Server(new InMemoryStorageServiceImpl(), key(0, 0, 0, 0, 1), properties);
 		dave.setPortRange(alice.getAddress().getPort(), bob.getAddress().getPort());
@@ -172,11 +178,15 @@ public class ServerTest {
 	}
 
 	/**
-	 * Ensures that calling start() twice results in an error.
+	 * Ensures that calling start() twice does not restart the service.
 	 */
-	@Test(expectedExceptions = IllegalStateException.class)
-	public void testRestartError() throws Exception {
+	@Test
+	public void testReStartNoError() throws Exception {
+		assertEquals(alice.state(), State.RUNNING);
+		int port = alice.getAddress().getPort();
 		alice.start();
+		assertEquals(alice.state(), State.RUNNING);
+		assertEquals(alice.getAddress().getPort(), port);
 	}
 
 	/**
@@ -184,7 +194,9 @@ public class ServerTest {
 	 */
 	public void testReStopNoError() {
 		Server dave = new Server(new InMemoryStorageServiceImpl(), key(0, 0, 0, 0, 1), properties);
+		assertEquals(dave.state(), State.NEW);
 		dave.stop();
+		assertEquals(dave.state(), State.TERMINATED);
 	}
 
 	BinaryKey key(int... value) {
@@ -201,6 +213,15 @@ public class ServerTest {
 			bytes[i] = (byte) i;
 		}
 		return ByteBuffer.wrap(bytes);
+	}
+
+	void contact(Server src, Server dest) throws InterruptedException, ExecutionException {
+		src.contactASync(dest.getAddress()).get();
+	}
+
+	Frame sendMessageSync(Server src, Frame request, InetSocketAddress dest) throws InterruptedException,
+			ExecutionException, TimeoutException {
+		return src.sendMessageASync(request, dest).get(1000, TimeUnit.MILLISECONDS);
 	}
 
 	void assertBSEquals(ByteString actual, ByteString expected) {

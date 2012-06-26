@@ -9,6 +9,8 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Comparator;
 import java.util.Random;
 
+import javax.xml.bind.DatatypeConverter;
+
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.ogreg.sdis.kademlia.Protocol.Message;
 import org.ogreg.sdis.kademlia.Protocol.Message.Builder;
@@ -161,16 +163,24 @@ class Util {
 	}
 
 	/**
-	 * @param nodeId
 	 * @param type
+	 * @param nodeId
 	 * @param address
+	 * @param rpcId
 	 * @return An initialized message builder with the specified type and node id set.
 	 */
-	public static Builder message(MessageType type, ByteString nodeId, InetSocketAddress address) {
+	public static Builder message(MessageType type, ByteString nodeId, InetSocketAddress address, ByteString rpcId) {
 		ByteString addr = ByteString.copyFrom(address.getAddress().getAddress());
 		int port = address.getPort();
-		ByteString rpcId = Util.generateByteStringId();
 		return Message.newBuilder().setType(type).setNodeId(nodeId).setAddress(addr).setPort(port).setRpcId(rpcId);
+	}
+
+	/**
+	 * @param bytes
+	 * @return The bytes encoded in Base64
+	 */
+	public static String toString(ByteString bytes) {
+		return DatatypeConverter.printHexBinary(bytes.toByteArray());
 	}
 
 	private static MessageDigest createSHA1Digest() {

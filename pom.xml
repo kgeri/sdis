@@ -111,11 +111,18 @@
 
 	<dependencies>
 
-		<!-- Apache MINA -->
+		<!-- Netty -->
 		<dependency>
 			<groupId>io.netty</groupId>
 			<artifactId>netty</artifactId>
 			<version>3.4.2.Final</version>
+		</dependency>
+
+		<!-- Google Guava -->
+		<dependency>
+			<groupId>com.google.guava</groupId>
+			<artifactId>guava</artifactId>
+			<version>12.0</version>
 		</dependency>
 
 		<!-- Google Protocol Buffers -->

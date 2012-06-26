@@ -13,7 +13,7 @@ import org.ogreg.sdis.model.BinaryKey;
 public interface P2PService {
 
 	/**
-	 * Tries to make contact with a supported P2P service on the specified port.
+	 * Makes contact with a supported P2P service on the specified port asynchronously.
 	 * <p>
 	 * Upon successful communication, the service might use this contact as a peer. This is basically for telling the
 	 * P2P service about new, externally identified nodes (ie. bootstrapping).
