@@ -175,6 +175,7 @@ public class ServerTest {
 		Server dave = new Server(new InMemoryStorageServiceImpl(), key(0, 0, 0, 0, 1), properties);
 		dave.setPortRange(alice.getAddress().getPort(), bob.getAddress().getPort());
 		dave.start();
+		assertEquals(dave.state(), State.FAILED);
 	}
 
 	/**

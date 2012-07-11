@@ -2,6 +2,7 @@ package org.ogreg.sdis;
 
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
+import java.util.concurrent.TimeoutException;
 
 import org.ogreg.sdis.model.BinaryKey;
 
@@ -31,8 +32,10 @@ public interface P2PService {
 	 * @param data
 	 *            The data to store
 	 * @return The key on which this data chunk was stored.
+	 * @throws TimeoutException
+	 *             if the operation has timed out
 	 */
-	BinaryKey store(ByteBuffer data);
+	BinaryKey store(ByteBuffer data) throws TimeoutException;
 
 	/**
 	 * Loads data with the specified key from the P2P network.

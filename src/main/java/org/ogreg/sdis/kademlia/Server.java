@@ -66,9 +66,8 @@ import com.google.common.cache.RemovalCause;
 import com.google.common.cache.RemovalListener;
 import com.google.common.cache.RemovalNotification;
 import com.google.common.util.concurrent.AbstractService;
+import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
-import com.google.common.util.concurrent.ListeningExecutorService;
-import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.SettableFuture;
 import com.google.protobuf.ByteString;
 
@@ -128,6 +127,7 @@ public class Server extends AbstractService implements P2PService {
 		updateAction = new ReplaceAction() {
 			@Override
 			public Contact replace(Contact leastRecent, Contact newContact) {
+				// TODO Async replace
 				boolean success = false;
 				try {
 					Message message = message(REQ_PING, Server.this.nodeId, leastRecent.address,
@@ -187,6 +187,7 @@ public class Server extends AbstractService implements P2PService {
 				address = new InetSocketAddress(port);
 				server.bind(address);
 				log.info("Kademlia server started at {}", address);
+				notifyStarted();
 				break;
 			} catch (ChannelException e) {
 				if (port < portTo) {
@@ -200,8 +201,6 @@ public class Server extends AbstractService implements P2PService {
 				}
 			}
 		}
-
-		notifyStarted();
 	}
 
 	@Override
@@ -232,7 +231,7 @@ public class Server extends AbstractService implements P2PService {
 
 	// Does an iterativeStore in the Kademlia network
 	@Override
-	public BinaryKey store(ByteBuffer data) {
+	public BinaryKey store(ByteBuffer data) throws TimeoutException {
 		// Note: if you change this, make sure data is not modified, neither directly, nor by any side-effect
 		BinaryKey key = Util.checksum(data);
 
@@ -243,25 +242,24 @@ public class Server extends AbstractService implements P2PService {
 
 		List<Contact> contacts = iterativeFindNode(key);
 
-		ListeningExecutorService executor = MoreExecutors.sameThreadExecutor();
+		List<ListenableFuture<Frame>> futures = new ArrayList<ListenableFuture<Frame>>(contacts.size());
 		for (final Contact contact : contacts) {
-			final ListenableFuture<Frame> future = sendMessageASync(frame, contact.address);
-			future.addListener(new Runnable() {
-				@Override
-				public void run() {
-					try {
-						Frame rsp = future.get();
-						// TODO Notify GUI instead
-						if (!rsp.getMessage().getType().equals(RSP_SUCCESS)) {
-							log.error("Store failed for: {}", contact);
-						}
-					} catch (InterruptedException e) {
-						throw new ShutdownException(e);
-					} catch (ExecutionException e) {
-						log.error("Store FAILED for: " + contact, e.getCause());
-					}
+			futures.add(sendMessageASync(frame, contact.address));
+		}
+
+		try {
+			// Waiting for results and logging errors
+			List<Frame> results = Futures.allAsList(futures).get(props.responseTimeOutMs, TimeUnit.MILLISECONDS);
+			for (Frame rsp : results) {
+				Message msg = rsp.getMessage();
+				if (!msg.getType().equals(RSP_SUCCESS)) {
+					log.error("Store failed for: {}", msg.getAddress());
 				}
-			}, executor);
+			}
+		} catch (InterruptedException e) {
+			throw new ShutdownException(e);
+		} catch (ExecutionException e) {
+			log.error("Store FAILED", e.getCause());
 		}
 
 		return key;
