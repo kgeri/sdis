@@ -27,11 +27,8 @@ import org.jboss.netty.bootstrap.ClientBootstrap;
 import org.jboss.netty.bootstrap.ServerBootstrap;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
-import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelException;
 import org.jboss.netty.channel.ChannelFactory;
-import org.jboss.netty.channel.ChannelFuture;
-import org.jboss.netty.channel.ChannelFutureListener;
 import org.jboss.netty.channel.ChannelHandlerContext;
 import org.jboss.netty.channel.ChannelPipeline;
 import org.jboss.netty.channel.ChannelPipelineFactory;
@@ -52,7 +49,8 @@ import org.ogreg.sdis.kademlia.Protocol.MessageType;
 import org.ogreg.sdis.kademlia.Protocol.Node;
 import org.ogreg.sdis.kademlia.Util.ContactWithDistance;
 import org.ogreg.sdis.model.BinaryKey;
-import org.ogreg.sdis.util.Conversation;
+import org.ogreg.sdis.util.Conversations;
+import org.ogreg.sdis.util.Conversations.NettyConversation;
 import org.ogreg.sdis.util.Properties;
 import org.ogreg.sdis.util.ProtobufFrameDecoder;
 import org.ogreg.sdis.util.ProtobufFrameEncoder;
@@ -60,15 +58,10 @@ import org.ogreg.sdis.util.ShutdownException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.RemovalCause;
-import com.google.common.cache.RemovalListener;
-import com.google.common.cache.RemovalNotification;
 import com.google.common.util.concurrent.AbstractService;
 import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.JdkFutureAdapters;
 import com.google.common.util.concurrent.ListenableFuture;
-import com.google.common.util.concurrent.SettableFuture;
 import com.google.protobuf.ByteString;
 
 /**
@@ -113,6 +106,7 @@ public class Server extends AbstractService implements P2PService {
 	private ChannelGroup channels = null;
 	private InetSocketAddress address = null;
 	private ExecutorService executor = null;
+	private Conversations<Frame> conversations = null;
 
 	private ReplaceAction updateAction;
 
@@ -157,6 +151,7 @@ public class Server extends AbstractService implements P2PService {
 
 		ChannelFactory serverChannelFactory = new NioServerSocketChannelFactory(executor, executor, props.serverThreads);
 		server = new ServerBootstrap(serverChannelFactory);
+		server.setOption("connectTimeoutMillis", props.responseTimeOutMs);
 		server.setPipelineFactory(new ChannelPipelineFactory() {
 			@Override
 			public ChannelPipeline getPipeline() throws Exception {
@@ -170,6 +165,7 @@ public class Server extends AbstractService implements P2PService {
 
 		ChannelFactory clientChannelFactory = new NioClientSocketChannelFactory(executor, executor, props.clientThreads);
 		client = new ClientBootstrap(clientChannelFactory);
+		client.setOption("connectTimeoutMillis", props.responseTimeOutMs);
 		client.setPipelineFactory(new ChannelPipelineFactory() {
 			public ChannelPipeline getPipeline() throws Exception {
 				ChannelPipeline p = Channels.pipeline();
@@ -181,6 +177,7 @@ public class Server extends AbstractService implements P2PService {
 		});
 
 		channels = new DefaultChannelGroup("kademlia");
+		conversations = new Conversations<Frame>(props.responseTimeOutMs);
 
 		for (int port = portFrom; port <= portTo; port++) {
 			try {
@@ -206,10 +203,14 @@ public class Server extends AbstractService implements P2PService {
 	@Override
 	protected void doStop() {
 		channels.close().awaitUninterruptibly();
+		conversations.cancelAll();
 		client.releaseExternalResources();
 		server.releaseExternalResources();
+
 		log.info("Kademlia server stopped at {}", address);
+
 		channels = null;
+		conversations = null;
 		address = null;
 		executor.shutdownNow();
 		executor = null;
@@ -236,14 +237,15 @@ public class Server extends AbstractService implements P2PService {
 		BinaryKey key = Util.checksum(data);
 
 		ByteString keyBS = ByteString.copyFrom(key.toByteArray());
-		ByteString rpcId = Util.generateByteStringId();
-		Message message = message(REQ_STORE, nodeId, this.address, rpcId).setKey(keyBS).build();
-		Frame frame = new Frame(message, ChannelBuffers.wrappedBuffer(data));
 
 		List<Contact> contacts = iterativeFindNode(key);
 
 		List<ListenableFuture<Frame>> futures = new ArrayList<ListenableFuture<Frame>>(contacts.size());
 		for (final Contact contact : contacts) {
+			// TODO Create a new conversation kind for mass messaging, and reuse the frame instance
+			ByteString rpcId = Util.generateByteStringId();
+			Message message = message(REQ_STORE, nodeId, this.address, rpcId).setKey(keyBS).build();
+			Frame frame = new Frame(message, ChannelBuffers.wrappedBuffer(data));
 			futures.add(sendMessageASync(frame, contact.address));
 		}
 
@@ -264,6 +266,54 @@ public class Server extends AbstractService implements P2PService {
 
 		return key;
 	}
+
+	// // Does an iterativeStore in the Kademlia network
+	// @Override
+	// public ListenableFuture<BinaryKey> store(ByteBuffer data) {
+	// // Note: if you change this, make sure data is not modified, neither directly, nor by any side-effect
+	// final BinaryKey key = Util.checksum(data);
+	//
+	// ByteString keyBS = ByteString.copyFrom(key.toByteArray());
+	// ByteString rpcId = Util.generateByteStringId();
+	// Message message = message(REQ_STORE, nodeId, this.address, rpcId).setKey(keyBS).build();
+	// final Frame frame = new Frame(message, ChannelBuffers.wrappedBuffer(data));
+	//
+	// // Finding suitable nodes for the given key
+	// ListenableFuture<List<Contact>> contacts = iterativeFindNode(key);
+	//
+	// // Sending STORE message to the best k
+	// ListenableFuture<List<Frame>> stored = Futures.transform(contacts,
+	// new AsyncFunction<List<Contact>, List<Frame>>() {
+	// @Override
+	// public ListenableFuture<List<Frame>> apply(List<Contact> contacts) throws Exception {
+	// List<ListenableFuture<Frame>> futures = new ArrayList<ListenableFuture<Frame>>(contacts.size());
+	// for (final Contact contact : contacts) {
+	// futures.add(sendMessageASync(frame, contact.address));
+	// }
+	// return Futures.allAsList(futures);
+	// }
+	// });
+	//
+	// // Determining results, returning key if any of the STOREs were successful
+	// ListenableFuture<BinaryKey> result = Futures.transform(stored, new Function<List<Frame>, BinaryKey>() {
+	// @Override
+	// public BinaryKey apply(List<Frame> results) {
+	// boolean success = false;
+	// for (Frame rsp : results) {
+	// Message msg = rsp.getMessage();
+	// if (!msg.getType().equals(RSP_SUCCESS)) {
+	// log.error("Store failed for: {}", msg.getAddress());
+	// } else {
+	// success = true;
+	// }
+	// }
+	//
+	// return success ? key : null;
+	// }
+	// });
+	//
+	// return result;
+	// }
 
 	@Override
 	public ByteBuffer load(BinaryKey key) {
@@ -361,10 +411,6 @@ public class Server extends AbstractService implements P2PService {
 
 		ByteString keyBS = ByteString.copyFrom(key.toByteArray());
 
-		// This will either be a REQ_FIND_NODE, or a REQ_FIND_VALUE
-		Message message = callback.getRequest(keyBS);
-		Frame frame = new Frame(message);
-
 		// TODO Time-limited operation (?)
 		ContactWithDistance cwd;
 		while ((cwd = queue.poll()) != null) {
@@ -376,11 +422,15 @@ public class Server extends AbstractService implements P2PService {
 				seen.add(contact);
 			}
 
+			// This will either be a REQ_FIND_NODE, or a REQ_FIND_VALUE
+			// TODO Create a new conversation kind for mass messaging, and reuse the frame instance
+			Message message = callback.getRequest(keyBS);
+			Frame frame = new Frame(message);
 			ListenableFuture<Frame> future = sendMessageASync(frame, contact.address);
 
 			try {
 				// TODO Parallel execution
-				Frame rsp = future.get();
+				Frame rsp = future.get(props.responseTimeOutMs, TimeUnit.MILLISECONDS);
 
 				Message msg = rsp.getMessage();
 				if (msg.getType() == RSP_SUCCESS) {
@@ -399,6 +449,8 @@ public class Server extends AbstractService implements P2PService {
 				throw new ShutdownException(e);
 			} catch (ExecutionException e) {
 				log.error("IterativeFind FAILED for: " + contact, e.getCause());
+			} catch (TimeoutException e) {
+				log.error("IterativeFind TIMED OUT for: " + contact);
 			}
 		}
 	}
@@ -455,35 +507,9 @@ public class Server extends AbstractService implements P2PService {
 	 */
 	// Package private for testing
 	ListenableFuture<Frame> sendMessageASync(final Frame frame, final InetSocketAddress address) {
-		final SettableFuture<Frame> result = SettableFuture.create();
-		final MessageType messageType = frame.getType();
-		client.connect(address).addListener(new ChannelFutureListener() {
-			@Override
-			public void operationComplete(ChannelFuture future) throws Exception {
-				if (!future.isSuccess()) {
-					log.error("Failed to send {} to {}. Connection failed.", messageType, address);
-					return;
-				}
-
-				final Channel channel = future.getChannel();
-				final ClientHandler handler = channel.getPipeline().get(ClientHandler.class);
-				handler.addConversation(frame, result);
-
-				channel.write(frame).addListener(new ChannelFutureListener() {
-					@Override
-					public void operationComplete(ChannelFuture future) throws Exception {
-						if (!future.isSuccess()) {
-							log.error("Failed to send {} to {}. Write failed.", messageType, address);
-							handler.discardConversation(frame);
-							return;
-						}
-
-						log.debug("Successfully sent {} to {}", messageType, address);
-					}
-				});
-			}
-		});
-		return result;
+		SingleFrameConversation conversation = new SingleFrameConversation(client);
+		conversations.add(frame.getMessage().getRpcId(), conversation).proceed(frame, address);
+		return JdkFutureAdapters.listenInPoolThread(conversation, executor); // TODO get rid of this
 	}
 
 	/**
@@ -654,38 +680,49 @@ public class Server extends AbstractService implements P2PService {
 		log.error("Unsupported message from: {} ({})", contact, request);
 	}
 
-	// The client handler for protobuf Kademlia messages
-	private class ClientHandler extends SimpleChannelUpstreamHandler {
+	// A simple conversation for sending a single message and waiting for the response
+	private static class SingleFrameConversation extends NettyConversation<Frame, Frame> {
 
-		// Stores conversation state by RPC id temporarily (entries will be evicted after responseTimeoutMs)
-		private final Cache<ByteString, Conversation<Frame>> conversations;
-
-		public ClientHandler() {
-			this.conversations = CacheBuilder.newBuilder().concurrencyLevel(props.maxParallelism)
-					.expireAfterWrite(props.responseTimeOutMs, TimeUnit.MILLISECONDS)
-					.removalListener(new RemovalListener<ByteString, Conversation<Frame>>() {
-						@Override
-						public void onRemoval(RemovalNotification<ByteString, Conversation<Frame>> n) {
-							if (n.getCause() == RemovalCause.EXPIRED) {
-								conversationFailed(n.getValue());
-							}
-						}
-
-					}).build();
+		private enum State {
+			INIT, SENDING_REQ, RSP_RECEIVED;
 		}
 
-		public void addConversation(Frame frame, SettableFuture<Frame> dest) {
-			conversations.put(frame.getMessage().getRpcId(), new Conversation<Frame>(frame, dest));
+		public SingleFrameConversation(ClientBootstrap client) {
+			super(client, State.INIT);
 		}
 
-		public void discardConversation(Frame frame) {
-			ByteString rpcId = frame.getMessage().getRpcId();
-			Conversation<Frame> conversation = conversations.getIfPresent(rpcId);
-			if (conversation != null) {
-				conversations.invalidate(rpcId);
-				conversationFailed(conversation);
+		@Override
+		protected Enum<?> proceed(Enum<?> state, Frame message, InetSocketAddress address) {
+			switch ((State) state) {
+			case INIT:
+				send(message, address);
+				return State.SENDING_REQ;
+			case SENDING_REQ:
+				succeed(message);
+				return State.RSP_RECEIVED;
+			default:
+				throw new IllegalStateException();
 			}
 		}
+
+		@Override
+		protected void onConnectionFailed(InetSocketAddress address, Throwable cause) {
+			log.error("Failed to send message to {}. Connection failed.", address);
+		}
+
+		@Override
+		protected void onSendFailed(InetSocketAddress address, Frame message, Throwable cause) {
+			log.error("Failed to send {} to {}. Write failed.", message.getType(), address);
+		}
+
+		@Override
+		protected void onSendSucceeded(InetSocketAddress address, Frame message) {
+			log.debug("Successfully sent {} to {}", message.getType(), address);
+		}
+	}
+
+	// The client handler for protobuf Kademlia messages
+	private class ClientHandler extends SimpleChannelUpstreamHandler {
 
 		@Override
 		public void channelOpen(ChannelHandlerContext ctx, ChannelStateEvent e) throws Exception {
@@ -697,21 +734,11 @@ public class Server extends AbstractService implements P2PService {
 		public void messageReceived(ChannelHandlerContext ctx, MessageEvent e) throws Exception {
 			Frame frame = (Frame) e.getMessage();
 			Message rsp = frame.getMessage();
-			ByteString rpcId = rsp.getRpcId();
-
-			Conversation<Frame> conversation = conversations.getIfPresent(rpcId);
-
-			if (conversation == null) {
-				log.warn("Conversation {} has timed out, or never existed. Ignoring message: {}", Util.toString(rpcId),
-						rsp);
-				return;
-			}
 
 			Contact src = Util.toContact(rsp.getNodeId(), rsp.getAddress(), rsp.getPort());
 			onMessageReceived(src, frame);
 
-			conversations.invalidate(rpcId);
-			conversation.getResponse().set(frame);
+			conversations.get(rsp.getRpcId()).proceed(frame, src.address);
 			e.getChannel().close();
 		}
 
@@ -719,12 +746,6 @@ public class Server extends AbstractService implements P2PService {
 		public void exceptionCaught(ChannelHandlerContext ctx, ExceptionEvent e) throws Exception {
 			log.error("Unexpected communication error", e.getCause());
 			e.getChannel().close();
-		}
-
-		private void conversationFailed(Conversation<Frame> conversation) {
-			conversation.getResponse().setException(
-					new TimeoutException("Conversation "
-							+ Util.toString(conversation.getRequest().getMessage().getRpcId()) + " failed"));
 		}
 	}
 

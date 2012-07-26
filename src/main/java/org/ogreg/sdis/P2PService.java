@@ -31,9 +31,8 @@ public interface P2PService {
 	 * 
 	 * @param data
 	 *            The data to store
-	 * @return The key on which this data chunk was stored.
+	 * @return The key on which this data chunk was stored, or null if store failed.
 	 * @throws TimeoutException
-	 *             if the operation has timed out
 	 */
 	BinaryKey store(ByteBuffer data) throws TimeoutException;
 

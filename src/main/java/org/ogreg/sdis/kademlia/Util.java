@@ -34,6 +34,9 @@ class Util {
 	 */
 	private static final ThreadLocal<MessageDigest> SHA1Digests = new ThreadLocal<MessageDigest>();
 
+	/**
+	 * Sorts contacts by node id distance, ascending.
+	 */
 	public static final Comparator<ContactWithDistance> ContactDistanceComparator = new Comparator<ContactWithDistance>() {
 		@Override
 		public int compare(ContactWithDistance o1, ContactWithDistance o2) {

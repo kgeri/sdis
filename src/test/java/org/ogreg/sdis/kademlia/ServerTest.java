@@ -216,13 +216,13 @@ public class ServerTest {
 		return ByteBuffer.wrap(bytes);
 	}
 
-	void contact(Server src, Server dest) throws InterruptedException, ExecutionException {
-		src.contactASync(dest.getAddress()).get();
+	void contact(Server src, Server dest) throws InterruptedException, ExecutionException, TimeoutException {
+		src.contactASync(dest.getAddress()).get(5000, TimeUnit.MILLISECONDS);
 	}
 
 	Frame sendMessageSync(Server src, Frame request, InetSocketAddress dest) throws InterruptedException,
 			ExecutionException, TimeoutException {
-		return src.sendMessageASync(request, dest).get(1000, TimeUnit.MILLISECONDS);
+		return src.sendMessageASync(request, dest).get(10000, TimeUnit.MILLISECONDS);
 	}
 
 	void assertBSEquals(ByteString actual, ByteString expected) {

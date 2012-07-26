@@ -4,6 +4,9 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import org.ogreg.sdis.CommonUtil;
 import org.ogreg.sdis.model.BinaryKey;
@@ -11,7 +14,8 @@ import org.ogreg.sdis.model.BinaryKey;
 /**
  * A fixed-length k-bucket implementation of the {@link RoutingTable}.
  * <p>
- * Stores k-buckets in a fixed table (160 entries) which avoids copying.
+ * Stores k-buckets in a fixed table (160 entries) which avoids copying. This implementation is threadsafe. Access to
+ * buckets is synchronized using a single read/write lock.
  * 
  * @author gergo
  */
@@ -23,14 +27,21 @@ public class RoutingTableFixedImpl implements RoutingTable {
 
 	private final int maxBucketSize;
 
+	private final Lock readLock;
+
+	private final Lock writeLock;
+
 	@SuppressWarnings("unchecked")
 	public RoutingTableFixedImpl(BinaryKey currentNodeId, int maxBucketSize) {
 		this.currentNodeId = currentNodeId;
 		this.maxBucketSize = maxBucketSize;
-		this.buckets = new LinkedList[BinaryKey.LENGTH_BITS];
+		this.buckets = new Deque[BinaryKey.LENGTH_BITS];
 		for (int i = 0; i < buckets.length; i++) {
 			buckets[i] = new LinkedList<Contact>();
 		}
+		ReadWriteLock lock = new ReentrantReadWriteLock();
+		this.readLock = lock.readLock();
+		this.writeLock = lock.writeLock();
 	}
 
 	@Override
@@ -41,20 +52,26 @@ public class RoutingTableFixedImpl implements RoutingTable {
 
 		Deque<Contact> bucket = getBucket(contact.nodeId);
 
-		// If the contact already exists, we update it
-		if (bucket.remove(contact)) {
+		try {
+			writeLock.lock();
+
+			// If the contact already exists, we update it
+			if (bucket.remove(contact)) {
+				bucket.addFirst(contact);
+				return;
+			}
+
+			// If the bucket is full, we invoke the replace operation on the least recently used contact
+			if (bucket.size() >= maxBucketSize) {
+				Contact old = bucket.removeLast();
+				contact = action.replace(old, contact);
+			}
+
+			// We update the contact
 			bucket.addFirst(contact);
-			return;
+		} finally {
+			writeLock.unlock();
 		}
-
-		// If the bucket is full, we invoke the replace operation on the least recently used contact
-		if (bucket.size() >= maxBucketSize) {
-			Contact old = bucket.removeLast();
-			contact = action.replace(old, contact);
-		}
-
-		// We update the contact
-		bucket.addFirst(contact);
 	}
 
 	@Override
@@ -62,7 +79,13 @@ public class RoutingTableFixedImpl implements RoutingTable {
 		if (currentNodeId.equals(contact.nodeId)) {
 			return;
 		}
-		getBucket(contact.nodeId).remove(contact);
+
+		try {
+			writeLock.lock();
+			getBucket(contact.nodeId).remove(contact);
+		} finally {
+			writeLock.unlock();
+		}
 	}
 
 	@Override
@@ -73,21 +96,27 @@ public class RoutingTableFixedImpl implements RoutingTable {
 		int[] distance = currentNodeId.xor(nodeId);
 		int[] order = getBucketOrder(distance);
 
-		outer: for (int idx : order) {
-			Deque<Contact> bucket = buckets[idx];
+		try {
+			readLock.lock();
 
-			if (!bucket.isEmpty()) {
-				for (Contact contact : bucket) {
-					results.add(contact);
-					k--;
-					if (k == 0) {
-						break outer;
+			outer: for (int idx : order) {
+				Deque<Contact> bucket = buckets[idx];
+
+				if (!bucket.isEmpty()) {
+					for (Contact contact : bucket) {
+						results.add(contact);
+						k--;
+						if (k == 0) {
+							break outer;
+						}
 					}
 				}
 			}
-		}
 
-		return results;
+			return results;
+		} finally {
+			readLock.unlock();
+		}
 	}
 
 	/**
