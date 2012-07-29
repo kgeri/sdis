@@ -14,7 +14,6 @@ import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import org.jboss.netty.buffer.ChannelBuffers;
@@ -158,7 +157,7 @@ public class ServerTest {
 
 		charlieStore.store(dataKey, data);
 
-		assertEquals(alice.load(dataKey), data);
+		assertEquals(alice.load(dataKey).get(), data);
 
 		// The data should not be on Bob, he was just an intermediary
 		assertNull(bobStore.load(dataKey));
@@ -217,12 +216,12 @@ public class ServerTest {
 	}
 
 	void contact(Server src, Server dest) throws InterruptedException, ExecutionException, TimeoutException {
-		src.contactASync(dest.getAddress()).get(5000, TimeUnit.MILLISECONDS);
+		src.contactASync(dest.getAddress()).get();
 	}
 
 	Frame sendMessageSync(Server src, Frame request, InetSocketAddress dest) throws InterruptedException,
 			ExecutionException, TimeoutException {
-		return src.sendMessageASync(request, dest).get(10000, TimeUnit.MILLISECONDS);
+		return src.sendMessageASync(request, dest).get();
 	}
 
 	void assertBSEquals(ByteString actual, ByteString expected) {

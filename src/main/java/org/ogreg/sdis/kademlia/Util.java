@@ -194,7 +194,23 @@ class Util {
 		}
 	}
 
+	// Sorts Nodes by their XOR distance from a given origin, ascending
+	public static class ContactDistanceComparator implements Comparator<Contact> {
+
+		private final BinaryKey origin;
+
+		public ContactDistanceComparator(BinaryKey origin) {
+			this.origin = origin;
+		}
+
+		@Override
+		public int compare(Contact o1, Contact o2) {
+			return origin.xorCompare(o1.nodeId, o2.nodeId);
+		}
+	}
+
 	// An immutable Contact-distance pair
+	// TODO get rid of this
 	public static class ContactWithDistance {
 		public final Contact contact;
 

@@ -63,6 +63,22 @@ public final class BinaryKey implements Comparable<BinaryKey>, Cloneable {
 		return xor;
 	}
 
+	/**
+	 * @return -1, 0, or 1 if this key's XOR distance from b1 is less than, equal to, or greater than this key's XOR
+	 *         distance from b2.
+	 */
+	public int xorCompare(BinaryKey b1, BinaryKey b2) {
+		int[] bi1 = b1.value, bi2 = b2.value;
+		for (int i = 0; i < BinaryKey.LENGTH_INTS; i++) {
+			int xor1 = value[i] ^ bi1[i];
+			int xor2 = value[i] ^ bi2[i];
+			if (xor1 != xor2) {
+				return xor1 < xor2 ? -1 : 1;
+			}
+		}
+		return 0;
+	}
+
 	@Override
 	public int compareTo(BinaryKey o) {
 		for (int i = 0; i < LENGTH_INTS; i++) {

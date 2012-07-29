@@ -6,6 +6,8 @@ import java.util.concurrent.TimeoutException;
 
 import org.ogreg.sdis.model.BinaryKey;
 
+import com.google.common.util.concurrent.ListenableFuture;
+
 /**
  * Contract for services which provide access to a Peer-to-Peer network.
  * 
@@ -34,7 +36,7 @@ public interface P2PService {
 	 * @return The key on which this data chunk was stored, or null if store failed.
 	 * @throws TimeoutException
 	 */
-	BinaryKey store(ByteBuffer data) throws TimeoutException;
+	ListenableFuture<BinaryKey> store(ByteBuffer data) throws TimeoutException;
 
 	/**
 	 * Loads data with the specified key from the P2P network.
@@ -43,5 +45,5 @@ public interface P2PService {
 	 *            The key to search for
 	 * @return A buffer positioned to the requested data, or null if the data was not found.
 	 */
-	ByteBuffer load(BinaryKey key);
+	ListenableFuture<ByteBuffer> load(BinaryKey key);
 }

@@ -27,10 +27,10 @@ import com.google.protobuf.ByteString;
  */
 public class Conversations<M> {
 
-	@SuppressWarnings({ "rawtypes", "unchecked" })
+	@SuppressWarnings("rawtypes")
 	private static final Conversation EmptyConversation = new Conversation(null) {
 		@Override
-		protected Enum proceed(Enum state, Object message, InetSocketAddress address) {
+		protected State proceed(State state, Object message, InetSocketAddress address) {
 			return state;
 		}
 	};
@@ -47,20 +47,18 @@ public class Conversations<M> {
 	/**
 	 * Adds the specified conversation.
 	 * 
-	 * @param id
-	 *            The conversation's identifier (RPC id)
 	 * @param conversation
 	 *            The conversation to begin
 	 */
-	public Conversation<M, ?> add(ByteString id, Conversation<M, ?> conversation) {
-		Conversation<M, ?> previous = conversations.putIfAbsent(id, conversation);
+	public Conversation<M, ?> add(Conversation<M, ?> conversation) {
+		Conversation<M, ?> previous = conversations.putIfAbsent(conversation.id, conversation);
 
 		if (previous != null && previous != conversation) {
 			throw new IllegalStateException("Conversation id should not be reused: "
-					+ CommonUtil.toHexString(id.toByteArray()));
+					+ CommonUtil.toHexString(conversation.id.toByteArray()));
 		}
 
-		conversation.init(id, this);
+		conversation.init(this);
 		return conversation;
 	}
 
@@ -90,6 +88,14 @@ public class Conversations<M> {
 	}
 
 	/**
+	 * Type only to be used as a static constant for identifying a specific {@link Conversation} state.
+	 * 
+	 * @author gergo
+	 */
+	public static final class State {
+	}
+
+	/**
 	 * Base class for asynchronous conversations.
 	 * 
 	 * @author gergo
@@ -100,39 +106,41 @@ public class Conversations<M> {
 	 */
 	public static abstract class Conversation<M, V> implements Future<V> {
 
-		private final Enum<?> initState;
+		protected static final State STARTED = new State();
 
-		private Enum<?> state;
+		protected static final State FINISHED = new State();
+
+		protected final ByteString id;
+
+		private State state;
 
 		private boolean done;
 
 		private V value;
 
-		private ByteString id;
-
 		private Conversations<M> parent;
 
 		private Throwable error;
 
-		public Conversation(Enum<?> initState) {
-			this.initState = initState;
-		}
-
-		protected synchronized void init(ByteString id, Conversations<M> parent) {
+		public Conversation(ByteString id) {
 			this.id = id;
-			this.parent = parent;
-			this.error = null;
-			this.state = initState;
-			this.done = false;
 		}
 
-		public synchronized void proceed(M message, InetSocketAddress address) {
+		private void init(Conversations<M> parent) {
+			this.state = STARTED;
+			this.value = null;
+			this.error = null;
+			this.done = false;
+			this.parent = parent;
+		}
+
+		public final synchronized void proceed(M message, InetSocketAddress address) {
 			state = proceed(state, message, address);
 		}
 
-		protected abstract Enum<?> proceed(Enum<?> state, M message, InetSocketAddress address);
+		protected abstract State proceed(State state, M message, InetSocketAddress address);
 
-		protected void succeed(V value) {
+		protected final void succeed(V value) {
 			finishImpl(value, null);
 			parent.conversations.remove(id);
 		}
@@ -206,8 +214,8 @@ public class Conversations<M> {
 
 		private final ClientBootstrap client;
 
-		public NettyConversation(ClientBootstrap client, Enum<?> initState) {
-			super(initState);
+		public NettyConversation(ClientBootstrap client, ByteString id) {
+			super(id);
 			this.client = client;
 		}
 
