@@ -2,11 +2,9 @@ package org.ogreg.sdis;
 
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
-import java.util.concurrent.TimeoutException;
+import java.util.concurrent.Future;
 
 import org.ogreg.sdis.model.BinaryKey;
-
-import com.google.common.util.concurrent.ListenableFuture;
 
 /**
  * Contract for services which provide access to a Peer-to-Peer network.
@@ -22,8 +20,9 @@ public interface P2PService {
 	 * P2P service about new, externally identified nodes (ie. bootstrapping).
 	 * 
 	 * @param address
+	 * @return True if the node was contacted successfully
 	 */
-	void contact(InetSocketAddress address);
+	Future<Boolean> contact(InetSocketAddress address);
 
 	/**
 	 * Stores the specified data chunk in the P2P network.
@@ -34,9 +33,8 @@ public interface P2PService {
 	 * @param data
 	 *            The data to store
 	 * @return The key on which this data chunk was stored, or null if store failed.
-	 * @throws TimeoutException
 	 */
-	ListenableFuture<BinaryKey> store(ByteBuffer data) throws TimeoutException;
+	Future<BinaryKey> store(ByteBuffer data);
 
 	/**
 	 * Loads data with the specified key from the P2P network.
@@ -45,5 +43,5 @@ public interface P2PService {
 	 *            The key to search for
 	 * @return A buffer positioned to the requested data, or null if the data was not found.
 	 */
-	ListenableFuture<ByteBuffer> load(BinaryKey key);
+	Future<ByteBuffer> load(BinaryKey key);
 }

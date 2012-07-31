@@ -219,6 +219,39 @@ public class Conversations<M> {
 			this.client = client;
 		}
 
+		/**
+		 * Implementors should provide conversation initialization logic here.
+		 * 
+		 * @return The next state to continue with
+		 */
+		protected abstract State onStarted();
+
+		/**
+		 * Implementors should provide message processing logic for their custom states here.
+		 * 
+		 * @param state
+		 * @param message
+		 * @param address
+		 * @return The next state to continue with.
+		 */
+		protected abstract State onResponse(State state, M message, InetSocketAddress address);
+
+		protected synchronized final State proceed(State state, M message, InetSocketAddress address) {
+			if (state == STARTED) {
+				return onStarted();
+			} else if (state == FINISHED) {
+				return FINISHED;
+			} else {
+				return onResponse(state, message, address);
+			}
+		}
+
+		/**
+		 * Implementors can use this method to send out an asynchronous message.
+		 * 
+		 * @param message
+		 * @param address
+		 */
 		protected void send(final M message, final InetSocketAddress address) {
 
 			ChannelFutureListener listener = new ChannelFutureListener() {

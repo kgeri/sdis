@@ -11,6 +11,7 @@ import java.util.Collection;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -34,6 +35,7 @@ import org.jboss.netty.channel.socket.nio.NioClientSocketChannelFactory;
 import org.jboss.netty.channel.socket.nio.NioServerSocketChannelFactory;
 import org.ogreg.sdis.P2PService;
 import org.ogreg.sdis.StorageService;
+import org.ogreg.sdis.kademlia.Conversations.ContactConversation;
 import org.ogreg.sdis.kademlia.Conversations.IterativeFindValueConversation;
 import org.ogreg.sdis.kademlia.Conversations.IterativeStoreConversation;
 import org.ogreg.sdis.kademlia.Conversations.SingleFrameConversation;
@@ -51,8 +53,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.util.concurrent.AbstractService;
-import com.google.common.util.concurrent.JdkFutureAdapters;
-import com.google.common.util.concurrent.ListenableFuture;
 import com.google.protobuf.ByteString;
 
 /**
@@ -118,7 +118,7 @@ public class Server extends AbstractService implements P2PService {
 					Message message = message(REQ_PING, Server.this.nodeId, leastRecent.address,
 							Util.generateByteStringId()).build();
 					Frame frame = new Frame(message);
-					ListenableFuture<Frame> future = sendMessageASync(frame, address);
+					Future<Frame> future = sendMessageASync(frame, address);
 					Frame response = future.get(props.responseTimeOutMs, TimeUnit.MILLISECONDS);
 					success = response.getMessage().getType().equals(RSP_SUCCESS);
 				} catch (TimeoutException e) {
@@ -209,21 +209,14 @@ public class Server extends AbstractService implements P2PService {
 	}
 
 	@Override
-	public void contact(InetSocketAddress address) {
-		contactASync(address);
+	public Future<Boolean> contact(InetSocketAddress address) {
+		ContactConversation conversation = new ContactConversation(client, nodeId, this.address, address);
+		conversations.add(conversation).proceed(null, null);
+		return conversation;
 	}
 
-	// Package private for testing
-	ListenableFuture<Frame> contactASync(InetSocketAddress address) {
-		ByteString rpcId = Util.generateByteStringId();
-		Frame req = new Frame(message(REQ_PING, nodeId, this.address, rpcId).build());
-		// TODO Direct errors to GUI
-		return sendMessageASync(req, address);
-	}
-
-	// Does an iterativeStore in the Kademlia network
 	@Override
-	public ListenableFuture<BinaryKey> store(ByteBuffer data) throws TimeoutException {
+	public Future<BinaryKey> store(ByteBuffer data) {
 		// Note: if you change this, make sure data is not modified, neither directly, nor by any side-effect
 		BinaryKey key = Util.checksum(data);
 
@@ -231,16 +224,16 @@ public class Server extends AbstractService implements P2PService {
 				address, key, data);
 		conversations.add(conversation).proceed(null, null);
 
-		return JdkFutureAdapters.listenInPoolThread(conversation, executor); // TODO get rid of this
+		return conversation;
 	}
 
 	@Override
-	public ListenableFuture<ByteBuffer> load(BinaryKey key) {
+	public Future<ByteBuffer> load(BinaryKey key) {
 		IterativeFindValueConversation conversation = new IterativeFindValueConversation(client, routingTable, props,
 				nodeId, address, key);
 		conversations.add(conversation).proceed(null, null);
 
-		return JdkFutureAdapters.listenInPoolThread(conversation, executor); // TODO get rid of this
+		return conversation;
 	}
 
 	/**
@@ -284,10 +277,10 @@ public class Server extends AbstractService implements P2PService {
 	 * @return A future holding the response frame
 	 */
 	// Package private for testing
-	ListenableFuture<Frame> sendMessageASync(final Frame frame, final InetSocketAddress address) {
+	Future<Frame> sendMessageASync(final Frame frame, final InetSocketAddress address) {
 		SingleFrameConversation conversation = new SingleFrameConversation(client, frame, address);
 		conversations.add(conversation).proceed(null, null);
-		return JdkFutureAdapters.listenInPoolThread(conversation, executor); // TODO get rid of this
+		return conversation;
 	}
 
 	/**

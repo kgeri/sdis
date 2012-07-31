@@ -216,7 +216,7 @@ public class ServerTest {
 	}
 
 	void contact(Server src, Server dest) throws InterruptedException, ExecutionException, TimeoutException {
-		src.contactASync(dest.getAddress()).get();
+		src.contact(dest.getAddress()).get();
 	}
 
 	Frame sendMessageSync(Server src, Frame request, InetSocketAddress dest) throws InterruptedException,

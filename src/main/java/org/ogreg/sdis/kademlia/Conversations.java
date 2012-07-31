@@ -2,6 +2,7 @@ package org.ogreg.sdis.kademlia;
 
 import static org.ogreg.sdis.kademlia.Protocol.MessageType.REQ_FIND_NODE;
 import static org.ogreg.sdis.kademlia.Protocol.MessageType.REQ_FIND_VALUE;
+import static org.ogreg.sdis.kademlia.Protocol.MessageType.REQ_PING;
 import static org.ogreg.sdis.kademlia.Protocol.MessageType.REQ_STORE;
 import static org.ogreg.sdis.kademlia.Protocol.MessageType.RSP_SUCCESS;
 import static org.ogreg.sdis.kademlia.Util.message;
@@ -19,6 +20,7 @@ import org.jboss.netty.bootstrap.ClientBootstrap;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
 import org.ogreg.sdis.kademlia.Protocol.Message;
+import org.ogreg.sdis.kademlia.Protocol.MessageType;
 import org.ogreg.sdis.kademlia.Protocol.Node;
 import org.ogreg.sdis.model.BinaryKey;
 import org.ogreg.sdis.util.Conversations.NettyConversation;
@@ -38,7 +40,7 @@ class Conversations {
 	private static final Logger log = LoggerFactory.getLogger(Conversations.class);
 
 	// A simple conversation for sending a single message and waiting for the response
-	static class SingleFrameConversation extends NettyConversation<Frame, Frame> {
+	static final class SingleFrameConversation extends NettyConversation<Frame, Frame> {
 
 		protected static final State REQUEST_SENT = new State();
 
@@ -53,16 +55,15 @@ class Conversations {
 		}
 
 		@Override
-		protected State proceed(State state, Frame message, InetSocketAddress address) {
-			if (state == STARTED) {
-				send(request, targetAddress);
-				return REQUEST_SENT;
-			} else if (state == REQUEST_SENT) {
-				succeed(message);
-				return FINISHED;
-			} else {
-				return FINISHED;
-			}
+		protected State onStarted() {
+			send(request, targetAddress);
+			return REQUEST_SENT;
+		}
+
+		@Override
+		protected State onResponse(State state, Frame message, InetSocketAddress address) {
+			succeed(message);
+			return FINISHED;
 		}
 
 		@Override
@@ -78,6 +79,38 @@ class Conversations {
 		@Override
 		protected void onSendSucceeded(InetSocketAddress address, Frame message) {
 			log.debug("Successfully sent {} to {}", message.getType(), address);
+		}
+	}
+
+	// Conversation for contacting a node
+	static final class ContactConversation extends NettyConversation<Frame, Boolean> {
+
+		protected static final State PING_SENT = new State();
+
+		private final ByteString nodeId;
+
+		private final InetSocketAddress sourceAddress;
+
+		private final InetSocketAddress targetAddress;
+
+		public ContactConversation(ClientBootstrap client, ByteString nodeId, InetSocketAddress sourceAddress,
+				InetSocketAddress targetAddress) {
+			super(client, Util.generateByteStringId());
+			this.nodeId = nodeId;
+			this.sourceAddress = sourceAddress;
+			this.targetAddress = targetAddress;
+		}
+
+		@Override
+		protected State onStarted() {
+			send(new Frame(message(REQ_PING, nodeId, sourceAddress, id).build()), targetAddress);
+			return PING_SENT;
+		}
+
+		@Override
+		protected State onResponse(State state, Frame message, InetSocketAddress address) {
+			succeed(message.getMessage().getType() == MessageType.RSP_SUCCESS);
+			return FINISHED;
 		}
 	}
 
@@ -136,26 +169,39 @@ class Conversations {
 		 * @return {@link #ITERATING} if the iteration should continue, or any other state to continue work in that
 		 *         state
 		 */
-		protected abstract State onSuccess(Frame message, Contact contact);
+		protected abstract State onStepSuccess(Frame message, Contact contact);
+
+		/**
+		 * Implementors must specify what happens after the iteration is completed.
+		 * 
+		 * @param state
+		 * @param message
+		 * @param address
+		 * @return The state to continue with
+		 */
+		protected abstract State onIterationComplete(State state, Frame message, InetSocketAddress address);
 
 		@Override
-		protected synchronized State proceed(State state, Frame message, InetSocketAddress address) {
-			if (state == STARTED) {
-				// Initially the queue is filled using the routing table
-				// Contacts are sorted by nearest first
-				for (Contact contact : routingTable.getClosestTo(key, props.maxParallelism)) {
-					send(request, contact.address);
-				}
+		protected State onStarted() {
+			// Initially the queue is filled using the routing table
+			// Contacts are sorted by nearest first
+			for (Contact contact : routingTable.getClosestTo(key, props.maxParallelism)) {
+				send(request, contact.address);
+			}
 
-				return ITERATING;
-			} else if (state == ITERATING) {
+			return ITERATING;
+		}
+
+		@Override
+		protected State onResponse(State state, Frame message, InetSocketAddress address) {
+			if (state == ITERATING) {
 				if (message.getType() == RSP_SUCCESS) {
 					Message msg = message.getMessage();
 					Contact contact = Util.toContact(msg.getNodeId(), msg.getAddress(), msg.getPort());
 
 					seen.add(contact);
 
-					State newState = onSuccess(message, contact);
+					State newState = onStepSuccess(message, contact);
 					if (newState != ITERATING) {
 						return newState;
 					}
@@ -173,7 +219,7 @@ class Conversations {
 
 				return ITERATING;
 			} else {
-				return FINISHED;
+				return onIterationComplete(state, message, address);
 			}
 		}
 
@@ -214,10 +260,10 @@ class Conversations {
 		}
 
 		@Override
-		protected final State onSuccess(Frame response, Contact contact) {
+		protected final State onStepSuccess(Frame response, Contact contact) {
 			results.add(contact);
 			if (results.size() >= props.maxContacts) {
-				return onSuccess(results);
+				return onContactsFound(results);
 			}
 			return ITERATING;
 		}
@@ -228,11 +274,11 @@ class Conversations {
 		 * @param contacts
 		 * @return The next state to continue processing in
 		 */
-		protected abstract State onSuccess(List<Contact> contacts);
+		protected abstract State onContactsFound(List<Contact> contacts);
 	}
 
 	// Conversation for finding the nearest props.maxContacts nodes iteratively
-	static class IterativeFindNodeConversation extends BaseIterativeFindNodeConversation<List<Contact>> {
+	static final class IterativeFindNodeConversation extends BaseIterativeFindNodeConversation<List<Contact>> {
 
 		public IterativeFindNodeConversation(ClientBootstrap client, RoutingTable routingTable,
 				KademliaProperties props, ByteString sourceNodeId, InetSocketAddress sourceAddress, BinaryKey key) {
@@ -240,14 +286,19 @@ class Conversations {
 		}
 
 		@Override
-		protected State onSuccess(List<Contact> contacts) {
+		protected State onContactsFound(List<Contact> contacts) {
 			succeed(contacts);
+			return FINISHED;
+		}
+
+		@Override
+		protected State onIterationComplete(State state, Frame message, InetSocketAddress address) {
 			return FINISHED;
 		}
 	}
 
 	// Conversation for finding the first value for a given key iteratively
-	static class IterativeFindValueConversation extends IterativeFindConversation<ByteBuffer> {
+	static final class IterativeFindValueConversation extends IterativeFindConversation<ByteBuffer> {
 
 		public IterativeFindValueConversation(ClientBootstrap client, RoutingTable routingTable,
 				KademliaProperties props, ByteString sourceNodeId, InetSocketAddress sourceAddress, BinaryKey key) {
@@ -261,7 +312,7 @@ class Conversations {
 		}
 
 		@Override
-		protected State onSuccess(Frame response, Contact contact) {
+		protected State onStepSuccess(Frame response, Contact contact) {
 			if (!response.hasData()) {
 				log.debug("Contact responded SUCCESS but no data to a FIND_VALUE: {}", contact);
 				return ITERATING;
@@ -283,10 +334,15 @@ class Conversations {
 			succeed(buffer);
 			return FINISHED;
 		}
+
+		@Override
+		protected State onIterationComplete(State state, Frame message, InetSocketAddress address) {
+			return FINISHED;
+		}
 	}
 
 	// Conversation for finding the nearest props.maxContacts nodes iteratively, and storing some data chunk on them
-	static class IterativeStoreConversation extends BaseIterativeFindNodeConversation<BinaryKey> {
+	static final class IterativeStoreConversation extends BaseIterativeFindNodeConversation<BinaryKey> {
 
 		protected static final State STORING = new State();
 
@@ -299,31 +355,27 @@ class Conversations {
 		}
 
 		@Override
-		protected synchronized State proceed(State state, Frame message, InetSocketAddress address) {
-			if (state == STORING) {
-				if (message.getType().equals(RSP_SUCCESS)) {
-					log.debug("Store succeeded for: {}", address);
-					// TODO Expect some redundancy here, only succeed after a number of STOREs succeeded
-					succeed(key);
-					return FINISHED;
-				} else {
-					log.error("Store failed for: {}", address);
-					// TODO Detect and handle failures (when all STOREs failed - currently we would wait until timeout)
-					return STORING;
-				}
-			} else {
-				return super.proceed(state, message, address);
-			}
-		}
-
-		@Override
-		protected State onSuccess(List<Contact> contacts) {
+		protected State onContactsFound(List<Contact> contacts) {
 			Message message = message(REQ_STORE, sourceNodeId, sourceAddress, id).setKey(keyBS).build();
 			Frame request = new Frame(message, ChannelBuffers.wrappedBuffer(data));
 			for (Contact contact : contacts) {
 				send(request, contact.address);
 			}
 			return STORING;
+		}
+
+		@Override
+		protected State onIterationComplete(State state, Frame message, InetSocketAddress address) {
+			if (message.getType().equals(RSP_SUCCESS)) {
+				log.debug("Store succeeded for: {}", address);
+				// TODO Expect some redundancy here, only succeed after a number of STOREs succeeded
+				succeed(key);
+				return FINISHED;
+			} else {
+				log.error("Store failed for: {}", address);
+				// TODO Detect and handle failures (when all STOREs failed - currently we would wait until timeout)
+				return STORING;
+			}
 		}
 	}
 }
